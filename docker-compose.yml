@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: streamlit-buyer-agent
     ports:
-      - "8501:8501"
+      - "8503:8501"
     restart: always
     environment:
       - PYTHONUNBUFFERED=1
