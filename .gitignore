@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pth
+*.xlsx
+*.zip
+*.log
+.DS_Store
+modelos_producao_constrained/
+test_model_checkpoints/
