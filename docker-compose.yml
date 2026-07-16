@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: streamlit-buyer-agent
+    container_name: rl_buyer_interface_aisupply
     ports:
       - "8503:8501"
     restart: always
