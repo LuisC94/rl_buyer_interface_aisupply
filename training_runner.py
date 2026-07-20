@@ -19,7 +19,8 @@ except ImportError:
 # --- WORKER FOR MULTI-CORE PPO ---
 def ppo_worker(worker_id, excel_path, train_split, num_envs, capacity, weights_queue, results_queue, shared_stats, horizon=90,
                holding_cost=0.70, transport_cost=10.0, fixed_transport_cost=10.0,
-               stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0):
+               stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0,
+               max_shelf_life=15.0):
     """ Worker that manages a block of PPO environments in synchronization """
     # Set seed for this worker to ensure diversity
     worker_seed = 42 + worker_id
@@ -30,7 +31,8 @@ def ppo_worker(worker_id, excel_path, train_split, num_envs, capacity, weights_q
     envs = [StockEnvironment(excel_path=excel_path, is_training=True, train_split=train_split, 
                              max_capacity=capacity, shared_stats=shared_stats,
                              holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
-                             stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty) for _ in range(num_envs)]
+                             stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                             max_shelf_life=max_shelf_life) for _ in range(num_envs)]
     
     max_order_limit = envs[0].max_order_limit
     agent = ParallelPPOAgent(state_dim=17, action_dim=1, max_action=max_order_limit)
@@ -97,7 +99,8 @@ def ppo_worker(worker_id, excel_path, train_split, num_envs, capacity, weights_q
 # --- SINGLE CORE TRAINING GENERATOR ---
 def train_single_core_generator(seed, excel_path, train_split, max_capacity, lr_actor, lr_critic, gamma, k_epochs, eps_clip, batch_size, max_episodes_total, num_envs, horizon=90, save_dir="modelos_producao_constrained",
                                 holding_cost=0.70, transport_cost=10.0, fixed_transport_cost=10.0,
-                                stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0):
+                                stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0,
+                                max_shelf_life=15.0):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -119,7 +122,8 @@ def train_single_core_generator(seed, excel_path, train_split, max_capacity, lr_
     envs = [StockEnvironment(excel_path=excel_path, is_training=True, train_split=train_split, 
                              max_capacity=max_capacity, shared_stats=shared_stats,
                              holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
-                             stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty) for _ in range(num_envs)]
+                             stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                             max_shelf_life=max_shelf_life) for _ in range(num_envs)]
     
     agent = ParallelPPOAgent(state_dim=17, action_dim=1, max_action=MAX_ORDER_LIMIT, 
                              lr_actor=lr_actor, lr_critic=lr_critic, gamma=gamma, K_epochs=k_epochs, eps_clip=eps_clip, batch_size=batch_size)
@@ -232,7 +236,8 @@ def train_single_core_generator(seed, excel_path, train_split, max_capacity, lr_
 # --- MULTI CORE TRAINING GENERATOR ---
 def train_multi_core_generator(seed, excel_path, train_split, max_capacity, lr_actor, lr_critic, gamma, k_epochs, eps_clip, batch_size, max_episodes_total, num_envs, num_workers, horizon=90, save_dir="modelos_producao_constrained",
                                holding_cost=0.70, transport_cost=10.0, fixed_transport_cost=10.0,
-                               stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0):
+                               stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0,
+                               max_shelf_life=15.0):
     try:
         mp.set_start_method('spawn', force=True)
     except RuntimeError:
@@ -268,7 +273,7 @@ def train_multi_core_generator(seed, excel_path, train_split, max_capacity, lr_a
     for i in range(num_workers):
         p = mp.Process(target=ppo_worker, args=(i, excel_path, train_split, envs_per_worker, max_capacity, weights_queues[i], results_queue, shared_stats, horizon,
                                                holding_cost, transport_cost, fixed_transport_cost,
-                                               stockout_penalty, waste_penalty, zero_stock_penalty))
+                                               stockout_penalty, waste_penalty, zero_stock_penalty, max_shelf_life))
         p.start()
         processes.append(p)
         
@@ -429,7 +434,8 @@ def continual_training_step(agent, new_experiences, env_train, max_action_val, l
 # --- SIMULATION RUNNER ---
 def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_base_path, s_min, S_max, update_interval_days=15, online_lr_actor=1e-5, online_lr_critic=5e-5, online_batch_size=32, save_dir="modelos_producao_constrained",
                            holding_cost=0.70, transport_cost=10.0, fixed_transport_cost=10.0,
-                           stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0):
+                           stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0,
+                           max_shelf_life=15.0):
     """
     Runs evaluation simulation, comparing RL Agent, Min-Max Baseline, and Oracle
     Yields data dictionary daily for Streamlit live charting and logging.
@@ -439,19 +445,23 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
     # 1. Initialize Environments
     env_test = StockEnvironment(excel_path=excel_path, is_training=False, train_split=train_split, max_capacity=max_capacity,
                                 holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
-                                stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty)
+                                stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                                max_shelf_life=max_shelf_life)
     env_minmax = StockEnvironment(excel_path=excel_path, is_training=False, train_split=train_split, max_capacity=max_capacity,
                                   holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
-                                  stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty)
+                                  stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                                  max_shelf_life=max_shelf_life)
     env_minmax.max_order_limit = float('inf') # Sem limite de encomenda para o Baseline
     env_oracle = StockEnvironment(excel_path=excel_path, is_training=False, train_split=train_split, max_capacity=max_capacity,
                                   holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
-                                  stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty)
+                                  stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                                  max_shelf_life=max_shelf_life)
     env_oracle.max_order_limit = float('inf') # Sem limite de encomenda para o Oráculo
     
     env_train = StockEnvironment(excel_path=excel_path, is_training=True, train_split=train_split, max_capacity=max_capacity,
                                  holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
-                                 stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty)
+                                 stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                                 max_shelf_life=max_shelf_life)
     
     state_dim = 17
     action_dim = 1
@@ -800,5 +810,261 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         "overflow_waste_total": sum(log_excesso_agente),
         "excel_report_path": excel_report_path,
         "final_model_path": final_model_path,
-        "update_days": update_days
+        "update_days": update_days,
+        "log_dias": log_dias,
+        "log_lucro_acumulado_agente": log_lucro_acumulado_agente,
+        "log_lucro_acumulado_minmax": log_lucro_acumulado_minmax,
+        "log_lucro_acumulado_oracle": log_lucro_acumulado_oracle
     }
+
+
+# =====================================================================
+# --- PREDICTION MODELS BACKEND FUNCTIONS ---
+# =====================================================================
+
+def train_mlp_forecaster_generator(lote, df_data, save_dir="models", epochs=1000, patience=100):
+    """
+    Treina o modelo de previsão MLP (Multi-Layer Perceptron) para o lote epoch-por-epoch.
+    Suporta até 1000 epochs com early stopping (patience=15) baseado em validação temporal.
+    Salva em save_dir/sales_mlp_{lote}.joblib
+    """
+    import os
+    import joblib
+    from sklearn.neural_network import MLPRegressor
+    from sklearn.metrics import mean_squared_error
+    
+    # Ordenar por data
+    df_data = df_data.sort_values(by='date').reset_index(drop=True)
+    df_data['date'] = pd.to_datetime(df_data['date'])
+    
+    # Criar features de lag e calendário
+    df_data['day_of_week'] = df_data['date'].dt.dayofweek + 1
+    df_data['month'] = df_data['date'].dt.month
+    
+    df_data['real_value_lag1'] = df_data['sales_quantity_kg'].shift(1)
+    df_data['real_value_lag7'] = df_data['sales_quantity_kg'].shift(7)
+    
+    if 'price_per_kg' not in df_data.columns:
+        df_data['price_per_kg'] = 2.0
+        
+    df_mlp = df_data.dropna(subset=['real_value_lag1', 'real_value_lag7', 'sales_quantity_kg']).reset_index(drop=True)
+    
+    if len(df_mlp) < 8:
+        raise ValueError("Histórico de vendas insuficiente para lags (mínimo 8 dias totais necessários).")
+        
+    X = df_mlp[['real_value_lag1', 'real_value_lag7', 'price_per_kg', 'day_of_week', 'month']].values
+    y = df_mlp['sales_quantity_kg'].values
+    
+    # Divisão temporal (90% treino, 10% validação)
+    split_idx = int(len(X) * 0.9)
+    if split_idx < 5:  # se o histórico for muito pequeno, valida no próprio treino
+        X_train, y_train = X, y
+        X_val, y_val = X, y
+    else:
+        X_train, X_val = X[:split_idx], X[split_idx:]
+        y_train, y_val = y[:split_idx], y[split_idx:]
+        
+    mlp = MLPRegressor(hidden_layer_sizes=(64, 32, 16), random_state=42)
+    
+    best_val_loss = float('inf')
+    best_coefs = None
+    best_intercepts = None
+    patience_counter = 0
+    
+    # Treino incremental (partial_fit)
+    for epoch in range(1, epochs + 1):
+        mlp.partial_fit(X_train, y_train)
+        
+        train_loss = mlp.loss_
+        y_val_pred = mlp.predict(X_val)
+        val_loss = float(mean_squared_error(y_val, y_val_pred))
+        
+        pct = int((epoch / epochs) * 100)
+        yield pct, f"Epoch {epoch}/{epochs} - Loss: {train_loss:.6f} - Val Loss: {val_loss:.6f}"
+        
+        # Monitorizar a melhor perda de validação
+        if val_loss < best_val_loss - 1e-4:
+            best_val_loss = val_loss
+            best_coefs = [c.copy() for c in mlp.coefs_]
+            best_intercepts = [i.copy() for i in mlp.intercepts_]
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                yield pct, f"Early Stopping na época {epoch}! Val Loss não melhora há {patience} épocas. Melhor Val Loss: {best_val_loss:.6f}"
+                # Restaurar o melhor estado
+                if best_coefs is not None:
+                    mlp.coefs_ = best_coefs
+                    mlp.intercepts_ = best_intercepts
+                break
+    
+    os.makedirs(save_dir, exist_ok=True)
+    model_path = os.path.join(save_dir, f"sales_mlp_{lote}.joblib")
+    joblib.dump(mlp, model_path)
+
+
+def train_autoformer_forecaster_generator(lote, df_data, save_dir="models"):
+    """
+    Treina o modelo de previsão Autoformer (PyTorch) para o lote com feedback em tempo real.
+    Salva em save_dir/sales_autoformer_{lote}.pt
+    """
+    import os
+    import autoformer_forecaster
+    
+    # Ordenar por data
+    df_data = df_data.sort_values(by='date').reset_index(drop=True)
+    df_data['date'] = pd.to_datetime(df_data['date'])
+    
+    df_auto = df_data.copy()
+    if 'date' in df_auto.columns:
+        df_auto = df_auto.rename(columns={"date": "Data"})
+    if 'sales_quantity_kg' in df_auto.columns:
+        df_auto = df_auto.rename(columns={"sales_quantity_kg": "Valor"})
+        
+    # Consumir o gerador interno do Autoformer
+    gen = autoformer_forecaster.train_model_generator(df_auto)
+    for pct, log_msg, model_bytes in gen:
+        if model_bytes is not None:
+            # Ao alcançar 100%, salvar o arquivo de pesos
+            os.makedirs(save_dir, exist_ok=True)
+            model_path = os.path.join(save_dir, f"sales_autoformer_{lote}.pt")
+            with open(model_path, 'wb') as f:
+                f.write(model_bytes)
+        yield pct, log_msg
+
+
+def run_forecast_inference(lote, model_type, df_history, horizon_days=30, save_dir="models"):
+    """
+    Executa a inferência autoregressiva (horizon_days = 15 ou 30) para o lote.
+    Retorna uma lista de tuplos (date, value) com valores inteiros.
+    """
+    import os
+    import joblib
+    import datetime
+    
+    df_history = df_history.sort_values(by='date').reset_index(drop=True)
+    df_history['date'] = pd.to_datetime(df_history['date'])
+    
+    start_date = df_history['date'].max() + datetime.timedelta(days=1)
+    predictions = []
+    
+    avg_price = float(df_history['price_per_kg'].mean() if 'price_per_kg' in df_history.columns else 2.0)
+    
+    if model_type == 'autoformer':
+        import autoformer_forecaster
+        model_path = os.path.join(save_dir, f"sales_autoformer_{lote}.pt")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Modelo Autoformer para o lote '{lote}' não foi encontrado em '{model_path}'.")
+            
+        with open(model_path, 'rb') as f:
+            model_bytes = f.read()
+            
+        running_history = list(df_history['sales_quantity_kg'].tail(30).values)
+        if len(running_history) < 30:
+            pad_size = 30 - len(running_history)
+            if len(running_history) == 0:
+                running_history = [10.0] * 30
+            else:
+                running_history = [running_history[0]] * pad_size + running_history
+                
+        preds_list = autoformer_forecaster.predict_horizon(model_bytes, running_history, avg_price, horizon_days, start_date=start_date)
+        
+        for step in range(horizon_days):
+            current_date = start_date + datetime.timedelta(days=step)
+            # Garantir valor inteiro arredondado
+            val = int(round(max(0.0, float(preds_list[step]))))
+            predictions.append((current_date, val))
+            
+    else: # mlp
+        model_path = os.path.join(save_dir, f"sales_mlp_{lote}.joblib")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Modelo MLP para o lote '{lote}' não foi encontrado em '{model_path}'.")
+            
+        mlp = joblib.load(model_path)
+        
+        running_history = list(df_history['sales_quantity_kg'].tail(7).values)
+        if len(running_history) < 7:
+            pad_size = 7 - len(running_history)
+            if len(running_history) == 0:
+                running_history = [10.0] * 7
+            else:
+                running_history = [running_history[0]] * pad_size + running_history
+                
+        for step in range(horizon_days):
+            current_date = start_date + datetime.timedelta(days=step)
+            day_of_week = current_date.weekday() + 1
+            month = current_date.month
+            
+            lag1 = running_history[-1]
+            lag7 = running_history[-7]
+            
+            X_pred = np.array([[lag1, lag7, avg_price, day_of_week, month]])
+            y_pred = float(mlp.predict(X_pred)[0])
+            # Garantir valor inteiro arredondado
+            y_pred_int = int(round(max(0.0, y_pred)))
+            
+            predictions.append((current_date, y_pred_int))
+            running_history.append(y_pred_int)
+            
+    return predictions
+
+
+def populate_prediction_column(lote, model_type, df_data, save_dir="models"):
+    """
+    Popula ou adiciona a coluna 'prediction' no DataFrame do histórico de treino/teste do Buyer Agent,
+    usando o modelo de previsão previamente treinado.
+    """
+    import os
+    import joblib
+    import datetime
+    
+    df_data = df_data.sort_values(by='date').reset_index(drop=True)
+    df_data['date'] = pd.to_datetime(df_data['date'])
+    
+    df_res = df_data.copy()
+    avg_price = float(df_res['price_per_kg'].mean() if 'price_per_kg' in df_res.columns else 2.0)
+    
+    predictions = []
+    
+    if model_type == 'autoformer':
+        import autoformer_forecaster
+        model_path = os.path.join(save_dir, f"sales_autoformer_{lote}.pt")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Modelo Autoformer para o lote '{lote}' não foi encontrado em '{model_path}'.")
+            
+        with open(model_path, 'rb') as f:
+            model_bytes = f.read()
+            
+        for idx in range(len(df_res)):
+            if idx < 30:
+                predictions.append(int(round(float(df_res.loc[idx, 'sales_quantity_kg']))))
+            else:
+                running_history = list(df_res.loc[idx-30:idx-1, 'sales_quantity_kg'].values)
+                current_date = df_res.loc[idx, 'date']
+                pred = autoformer_forecaster.predict_horizon(model_bytes, running_history, avg_price, horizon_days=1, start_date=current_date)[0]
+                predictions.append(int(round(max(0.0, float(pred)))))
+                
+    else: # mlp
+        model_path = os.path.join(save_dir, f"sales_mlp_{lote}.joblib")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Modelo MLP para o lote '{lote}' não foi encontrado em '{model_path}'.")
+            
+        mlp = joblib.load(model_path)
+        
+        for idx in range(len(df_res)):
+            if idx < 7:
+                predictions.append(int(round(float(df_res.loc[idx, 'sales_quantity_kg']))))
+            else:
+                lag1 = float(df_res.loc[idx-1, 'sales_quantity_kg'])
+                lag7 = float(df_res.loc[idx-7, 'sales_quantity_kg'])
+                day_of_week = df_res.loc[idx, 'date'].weekday() + 1
+                month = df_res.loc[idx, 'date'].month
+                price_val = float(df_res.loc[idx, 'price_per_kg'] if 'price_per_kg' in df_res.columns else avg_price)
+                
+                X_pred = np.array([[lag1, lag7, price_val, day_of_week, month]])
+                pred = float(mlp.predict(X_pred)[0])
+                predictions.append(int(round(max(0.0, pred))))
+                
+    df_res['prediction'] = predictions
+    return df_res
+

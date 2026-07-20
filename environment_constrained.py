@@ -35,76 +35,13 @@ class StockEnvironment:
     """
     OpenAI Gym-style Environment for Supply Chain Reinforcement Learning.
     Constrained version: Limits active ordering actions to the maximum historical sales in training split.
-    Uses FruitModel2 biological decay presets and active batch FEFO.
+    Uses clean age-based shelf life decay logic.
     """
     
-    # Presets biológicos por fruta retirados de FruitModel2.ipynb
-    PRESETS = {
-        "kiwi_hayward": {
-            "label": "Kiwi (Hayward)",
-            "Tref_C": 5.0, "Ea_J": 60000.0, "k_firm_ref": 0.06, "alpha_E": 1.8,
-            "beta_RH": 1.2, "RH_ref": 90.0,
-            "dureza_min": 3.0, "dureza_0_default": 45.0,
-            "brix_min": 11.0, "brix_max": 17.0, "brix_g": 0.35, "brix_0_default": 11.0,
-            "qual_firm_threshold": 8.0, "qual_brix_target": 15.0,
-            "E0_int": 0.02, "Eref_prod": 0.12, "E_t0": 10.0, "E_g": 0.9, "E_auto": 0.35,
-            "E_decay": 0.7, "Ea_E_J": 52000.0, "E_ext_shift": 2.0,
-            "RH_mold_thr": 95.0, "mold_rate_ref": 0.05, "mold_sens_RH": 9.0,
-            "mold_max_penalty": 0.65, "Ea_mold_J": 43000.0
-        },
-        "maca_golden": {
-            "label": "Maçã (Golden)",
-            "Tref_C": 5.0, "Ea_J": 50000.0, "k_firm_ref": 0.025, "alpha_E": 0.8,
-            "beta_RH": 0.8, "RH_ref": 90.0,
-            "dureza_min": 12.0, "dureza_0_default": 72.0,
-            "brix_min": 11.5, "brix_max": 15.5, "brix_g": 0.18, "brix_0_default": 12.0,
-            "qual_firm_threshold": 35.0, "qual_brix_target": 13.5,
-            "E0_int": 0.01, "Eref_prod": 0.1, "E_t0": 18.0, "E_g": 0.6, "E_auto": 0.35,
-            "E_decay": 0.55, "Ea_E_J": 52000.0, "E_ext_shift": 1.8,
-            "RH_mold_thr": 95.0, "mold_rate_ref": 0.04, "mold_sens_RH": 8.0,
-            "mold_max_penalty": 0.60, "Ea_mold_J": 42000.0
-        },
-        "maca_reineta": {
-            "label": "Maçã (Reineta)",
-            "Tref_C": 5.0, "Ea_J": 52000.0, "k_firm_ref": 0.035, "alpha_E": 1.1,
-            "beta_RH": 1.0, "RH_ref": 90.0,
-            "dureza_min": 10.0, "dureza_0_default": 65.0,
-            "brix_min": 11.0, "brix_max": 14.0, "brix_g": 0.16, "brix_0_default": 11.5,
-            "qual_firm_threshold": 30.0, "qual_brix_target": 12.5,
-            "E0_int": 0.01, "Eref_prod": 0.13, "E_t0": 14.0, "E_g": 0.7, "E_auto": 0.40,
-            "E_decay": 0.6, "Ea_E_J": 52000.0, "E_ext_shift": 2.0,
-            "RH_mold_thr": 95.0, "mold_rate_ref": 0.05, "mold_sens_RH": 9.0,
-            "mold_max_penalty": 0.65, "Ea_mold_J": 43000.0
-        },
-        "maca_gala": {
-            "label": "Maçã (Gala)",
-            "Tref_C": 5.0, "Ea_J": 48000.0, "k_firm_ref": 0.04, "alpha_E": 1.3,
-            "beta_RH": 0.9, "RH_ref": 90.0,
-            "dureza_min": 9.0, "dureza_0_default": 60.0,
-            "brix_min": 12.5, "brix_max": 17.0, "brix_g": 0.25, "brix_0_default": 13.0,
-            "qual_firm_threshold": 28.0, "qual_brix_target": 14.5,
-            "E0_int": 0.015, "Eref_prod": 0.18, "E_t0": 10.0, "E_g": 0.9, "E_auto": 0.5,
-            "E_decay": 0.65, "Ea_E_J": 52000.0, "E_ext_shift": 2.2,
-            "RH_mold_thr": 95.0, "mold_rate_ref": 0.05, "mold_sens_RH": 9.0,
-            "mold_max_penalty": 0.65, "Ea_mold_J": 43000.0
-        },
-        "maca_fuji": {
-            "label": "Maçã (Fuji)",
-            "Tref_C": 5.0, "Ea_J": 47000.0, "k_firm_ref": 0.018, "alpha_E": 0.6,
-            "beta_RH": 0.7, "RH_ref": 90.0,
-            "dureza_min": 15.0, "dureza_0_default": 80.0,
-            "brix_min": 13.0, "brix_max": 19.0, "brix_g": 0.15, "brix_0_default": 14.0,
-            "qual_firm_threshold": 40.0, "qual_brix_target": 16.0,
-            "E0_int": 0.008, "Eref_prod": 0.06, "E_t0": 25.0, "E_g": 0.5, "E_auto": 0.25,
-            "E_decay": 0.45, "Ea_E_J": 52000.0, "E_ext_shift": 1.4,
-            "RH_mold_thr": 95.0, "mold_rate_ref": 0.035, "mold_sens_RH": 8.0,
-            "mold_max_penalty": 0.55, "Ea_mold_J": 42000.0
-        }
-    }
-
     def __init__(self, excel_path, is_training=True, train_split=0.6, max_capacity=1000, shared_stats=None,
                  holding_cost=0.70, transport_cost=10.0, fixed_transport_cost=10.0,
-                 stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0):
+                 stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0,
+                 max_shelf_life=15.0):
         # 1. Load Data
         if isinstance(excel_path, pd.DataFrame):
             self.df = excel_path
@@ -131,19 +68,7 @@ class StockEnvironment:
         self.max_steps = len(self.data) - 1
         self.current_step = 0
         
-        # Mapeamento do SKU para chave do preset biológico
-        if "3_080" in excel_name:
-            self.fruit_key = "maca_gala"
-        elif "3_090" in excel_name:
-            self.fruit_key = "maca_fuji"
-        elif "3_252" in excel_name:
-            self.fruit_key = "kiwi_hayward"
-        elif "3_586" in excel_name or "2_586" in excel_name:
-            self.fruit_key = "maca_golden"
-        elif "911753" in excel_name:
-            self.fruit_key = "maca_reineta"
-        else:
-            self.fruit_key = "maca_gala"
+        self.max_shelf_life = float(max_shelf_life)
             
         # 3. Physics & Fixed Constraints
         self.max_capacity = max_capacity
@@ -188,15 +113,10 @@ class StockEnvironment:
     def reset(self):
         """ Resets the world to Day 0 """
         self.current_step = 0
-        p = self.PRESETS[self.fruit_key]
         
         # Inicializa o armazém com o lote inicial no dia 0
         self.active_batches = [{
             'quantity': self.stock_inicial,
-            'dureza': float(p["dureza_0_default"]),
-            'brix': float(p["brix_0_default"]),
-            'mold': 0.0,
-            'E_int': float(p.get("E0_int", 0.01)),
             'age': 0.0,
             'quality': 100.0
         }]
@@ -205,134 +125,24 @@ class StockEnvironment:
         self._update_stock_profile_from_batches()
         return self._get_state()
 
-    def advance_batch_one_day(self, batch, T_c, RH_pct, E_ext_ppm):
-        """ Avança a maturação biológica de um lote por 1 dia usando dt = 0.05 """
-        p = self.PRESETS[self.fruit_key]
-        R = 8.314
-        dt = 0.05
-        steps = int(1.0 / dt)
-        
-        T_K = T_c + 273.15
-        Tref_K = p["Tref_C"] + 273.15
-        
-        def k_temp_scaling(Ea, T, Tref):
-            return math.exp((-Ea / R) * (1.0 / T - 1.0 / Tref))
-            
-        def sigmoid(x):
-            return 1.0 / (1.0 + math.exp(-x))
-            
-        kT_firm = p["k_firm_ref"] * k_temp_scaling(p["Ea_J"], T_K, Tref_K)
-        
-        RH_ref = p["RH_ref"]
-        RH_deficit = max(0.0, (RH_ref - RH_pct) / 100.0)
-        kRH = 1.0 + p["beta_RH"] * RH_deficit
-        
-        Ea_E_J = float(p.get("Ea_E_J", 52000.0))
-        Eref_prod = float(p.get("Eref_prod", 0.08))
-        E_decay = float(p.get("E_decay", 0.7))
-        E_t0 = float(p.get("E_t0", 15.0))
-        E_g = float(p.get("E_g", 0.8))
-        E_auto = float(p.get("E_auto", 0.35))
-        E_ext_shift = float(p.get("E_ext_shift", 2.0))
-        
-        t0_eff = E_t0 - E_ext_shift * math.log1p(max(0.0, E_ext_ppm))
-        prod_T = k_temp_scaling(Ea_E_J, T_K, Tref_K)
-        
-        dureza_min = float(p["dureza_min"])
-        alpha_E = float(p["alpha_E"])
-        
-        brix_min = float(p["brix_min"])
-        brix_max = float(p["brix_max"])
-        r0 = float(p["brix_g"])
-        alpha_bE = 0.25
-        bRH = max(0.0, (RH_ref - RH_pct) / 100.0)
-        rRH = 1.0 - 0.6 * bRH
-        rT = k_temp_scaling(Ea_E_J, T_K, Tref_K)
-        
-        RH_mold_thr = float(p["RH_mold_thr"])
-        mold_rate_ref = float(p["mold_rate_ref"])
-        mold_sens_RH = float(p["mold_sens_RH"])
-        mold_max_penalty = float(p["mold_max_penalty"])
-        Ea_mold_J = float(p["Ea_mold_J"])
-        
-        mold_T = k_temp_scaling(Ea_mold_J, T_K, Tref_K)
-        RH_excess = max(0.0, (RH_pct - RH_mold_thr) / 100.0)
-        RH_factor = 1.0 - math.exp(-mold_sens_RH * RH_excess)
-        
-        dureza = batch['dureza']
-        brix = batch['brix']
-        mold = batch['mold']
-        E_int = batch.get('E_int', float(p.get("E0_int", 0.01)))
-        age = batch.get('age', 0.0)
-        
-        for _ in range(steps):
-            current_age = age + (_ * dt)
-            ramp = sigmoid(E_g * (current_age - t0_eff))
-            prod = Eref_prod * prod_T * ramp
-            dE = (prod * (1.0 + E_auto * E_int) - E_decay * E_int) * dt
-            E_int = max(0.0, E_int + dE)
-            
-            E_total = E_ext_ppm + E_int
-            
-            kE = 1.0 + alpha_E * E_total
-            k = kT_firm * kRH * kE
-            dD = (-k * (dureza - dureza_min)) * dt
-            dureza = max(dureza_min, dureza + dD)
-            
-            r = r0 * rT * rRH * (1.0 + alpha_bE * E_total)
-            x = max(0.0, brix - brix_min)
-            K = max(1e-6, brix_max - brix_min)
-            db = (r * x * (1.0 - x / K)) * dt
-            brix = min(brix_max, max(brix_min, brix + db))
-            
-            rate = mold_rate_ref * mold_T * RH_factor
-            dm = (rate * (1.0 - mold)) * dt
-            mold = min(1.0, max(0.0, mold + dm))
-            
-        firm_score = 1.0 / (1.0 + math.exp(-0.35 * (dureza - float(p["qual_firm_threshold"]))))
-        brix_score = math.exp(-((brix - float(p["qual_brix_target"]))**2) / 2.0)
-        quality_base = 100.0 * (0.65 * firm_score + 0.35 * brix_score)
-        
-        mold_penalty = mold_max_penalty * mold
-        quality = quality_base * (1.0 - mold_penalty)
-        
+    def advance_batch_one_day(self, batch):
+        """ Avança a idade do lote por 1 dia. Qualidade decresce linearmente com a idade. """
+        max_life = self.max_shelf_life
+        age = batch.get('age', 0.0) + 1.0
+        quality = max(0.0, 100.0 * (1.0 - age / max_life))
         return {
             'quantity': batch['quantity'],
-            'dureza': dureza,
-            'brix': brix,
-            'mold': mold,
-            'E_int': E_int,
-            'age': age + 1.0,
+            'age': age,
             'quality': quality
         }
 
     def project_batch_rsl(self, batch):
         """ Projeta os dias restantes até que a qualidade caia abaixo de 30.0 """
-        b = {
-            'quantity': batch['quantity'],
-            'dureza': batch['dureza'],
-            'brix': batch['brix'],
-            'mold': batch['mold'],
-            'E_int': batch.get('E_int', 0.01),
-            'age': batch.get('age', 0.0),
-            'quality': batch.get('quality', 100.0)
-        }
-        
-        row = self.data.iloc[self.current_step]
-        T_c = row['temperature'] if 'temperature' in row else 1.5
-        RH_pct = row['humidity'] if 'humidity' in row else 92.0
-        E_ext_ppm = row['ethylene'] if 'ethylene' in row else 0.05
-        
-        days_remaining = 0
-        max_projection_days = 60
-        
-        while days_remaining < max_projection_days:
-            if b['quality'] < 30.0:
-                break
-            b = self.advance_batch_one_day(b, T_c, RH_pct, E_ext_ppm)
-            days_remaining += 1
-            
-        return days_remaining
+        max_life = self.max_shelf_life
+        age = batch.get('age', 0.0)
+        limit_age = 0.7 * max_life
+        rsl = max(0, int(math.ceil(limit_age - age)))
+        return rsl
 
     def get_stock_remaining_shelf_life(self):
         """ Retorna o menor RSL estimado entre os lotes ativos em armazém """
@@ -491,13 +301,8 @@ class StockEnvironment:
         if 'active_batches' in checkpoint:
             self.active_batches = [dict(b) for b in checkpoint['active_batches']]
         else:
-            p = self.PRESETS[self.fruit_key]
             self.active_batches = [{
                 'quantity': sum(self.stock_profile),
-                'dureza': float(p["dureza_0_default"]),
-                'brix': float(p["brix_0_default"]),
-                'mold': 0.0,
-                'E_int': float(p.get("E0_int", 0.01)),
                 'age': 0.0,
                 'quality': 100.0
             }]
@@ -520,13 +325,8 @@ class StockEnvironment:
         
         accepted_arrivals = arrived_today - overflow_waste
         if accepted_arrivals > 0:
-            p = self.PRESETS[self.fruit_key]
             self.active_batches.append({
                 'quantity': float(accepted_arrivals),
-                'dureza': float(p["dureza_0_default"]),
-                'brix': float(p["brix_0_default"]),
-                'mold': 0.0,
-                'E_int': float(p.get("E0_int", 0.01)),
                 'age': 0.0,
                 'quality': 100.0
             })
@@ -559,17 +359,13 @@ class StockEnvironment:
             self.in_transit[arrival_day] = self.in_transit.get(arrival_day, 0) + order_qty
 
         # 6. Aging and Decay for each active batch
-        T_c = row['temperature'] if 'temperature' in row else 1.5
-        RH_pct = row['humidity'] if 'humidity' in row else 92.0
-        E_ext_ppm = row['ethylene'] if 'ethylene' in row else 0.05
-        
         spoilage = 0.0
         updated_batches = []
         
         for b in self.active_batches:
             if b['quantity'] <= 0:
                 continue
-            b_next = self.advance_batch_one_day(b, T_c, RH_pct, E_ext_ppm)
+            b_next = self.advance_batch_one_day(b)
             if b_next['quality'] < 30.0:
                 spoilage += b_next['quantity']
             else:
