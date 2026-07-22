@@ -908,114 +908,117 @@ with tab_sim:
             
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # Expander de Disrupções da Cadeia de Abastecimento
-        with st.expander(T("3. Disrupções da Cadeia de Abastecimento (Opcional)", "3. Supply Chain Disruptions (Optional)")):
-            st.markdown(T("Adicione eventos pontuais de disrupções para testar a resiliência do agente (ex: quebras de stock, atrasos de camião, picos de procura ou alteração de custos operacionais).",
-                          "Add custom disruption events to stress test the agent's resilience (e.g. stock outages, truck delays, demand spikes, or operational cost changes)."))
+        # Card de Disrupções da Cadeia de Abastecimento
+        st.markdown(f'<div class="custom-card">', unsafe_allow_html=True)
+        st.markdown(f"##### {T('3. Disrupções da Cadeia de Abastecimento (Opcional)', '3. Supply Chain Disruptions (Optional)')}")
+        st.markdown(T("Adicione eventos pontuais de disrupções para testar a resiliência do agente (ex: quebras de stock, atrasos de camião, picos de procura ou alteração de custos operacionais).",
+                      "Add custom disruption events to stress test the agent's resilience (e.g. stock outages, truck delays, demand spikes, or operational cost changes)."))
+        
+        if "sim_disruptions" not in st.session_state:
+            st.session_state.sim_disruptions = []
             
-            if "sim_disruptions" not in st.session_state:
-                st.session_state.sim_disruptions = []
-                
-            # Form para adicionar disrupção
-            col_d1, col_d2, col_d3 = st.columns([1, 1.2, 1.8])
-            with col_d1:
-                disp_day = st.number_input(T("Dia do Evento:", "Day of the Event:"), min_value=1, max_value=365, value=10, step=1, key="disp_day_input")
-            with col_d2:
-                disp_type = st.selectbox(
-                    T("Tipo de Disrupção:", "Disruption Type:"),
+        # Form para adicionar disrupção
+        col_d1, col_d2, col_d3 = st.columns([1, 1.2, 1.8])
+        with col_d1:
+            disp_day = st.number_input(T("Dia do Evento:", "Day of the Event:"), min_value=1, max_value=365, value=10, step=1, key="disp_day_input")
+        with col_d2:
+            disp_type = st.selectbox(
+                T("Tipo de Disrupção:", "Disruption Type:"),
+                [
+                    T("Forçar Stock / Inventário", "Force Stock / Inventory Override"),
+                    T("Atraso de Entrega (Lead Time)", "Lead Time Delivery Delay"),
+                    T("Perda de Carga em Trânsito", "In-Transit Cargo Loss"),
+                    T("Qualidade Inferior (Validade)", "Quality Degradation (Shelf Life)"),
+                    T("Forçar Procura Real (Kg)", "Force Real Demand (Kg)"),
+                    T("Redução de Capacidade", "Warehouse Capacity Reduction"),
+                    T("Alteração de Custo", "Operational Cost Change")
+                ],
+                key="disp_type_select"
+            )
+        with col_d3:
+            val_input = 0.0
+            cost_param_selected = ""
+            
+            if "Forçar Stock" in disp_type or "Force Stock" in disp_type:
+                val_input = st.number_input(T("Novo valor de Stock (Kg):", "New Stock Value (Kg):"), min_value=0.0, max_value=5000.0, value=0.0, step=10.0, key="disp_stock_val")
+                disp_key = "stock_override"
+            elif "Atraso de Entrega" in disp_type or "Lead Time" in disp_type:
+                val_input = st.number_input(T("Dias adicionais de atraso:", "Additional delay days:"), min_value=1, max_value=15, value=2, step=1, key="disp_delay_val")
+                disp_key = "delay"
+            elif "Perda de Carga" in disp_type or "In-Transit" in disp_type:
+                val_input = st.slider(T("Percentagem de Perda (%):", "Percentage Loss (%):"), min_value=0, max_value=100, value=50, step=5, key="disp_loss_val") / 100.0
+                disp_key = "in_transit_loss"
+            elif "Qualidade Inferior" in disp_type or "Quality" in disp_type:
+                val_input = st.number_input(T("Nova Validade do Lote (Dias):", "New Batch Shelf Life (Days):"), min_value=1, max_value=60, value=3, step=1, key="disp_shelf_val")
+                disp_key = "shelf_life_drop"
+            elif "Forçar Procura Real" in disp_type or "Force Real Demand" in disp_type:
+                val_input = st.number_input(T("Nova Procura Real (Kg):", "New Real Demand (Kg):"), min_value=0.0, max_value=10000.0, value=150.0, step=10.0, key="disp_demand_val")
+                disp_key = "demand_override"
+            elif "Redução de Capacidade" in disp_type or "Capacity" in disp_type:
+                val_input = st.number_input(T("Nova Capacidade Máxima (Kg):", "New Max Capacity (Kg):"), min_value=10, max_value=2000, value=100, step=10, key="disp_cap_val")
+                disp_key = "capacity_drop"
+            elif "Alteração de Custo" in disp_type or "Cost Change" in disp_type:
+                cost_param = st.selectbox(
+                    T("Custo a alterar:", "Cost to alter:"),
                     [
-                        T("Forçar Stock / Inventário", "Force Stock / Inventory Override"),
-                        T("Atraso de Entrega (Lead Time)", "Lead Time Delivery Delay"),
-                        T("Perda de Carga em Trânsito", "In-Transit Cargo Loss"),
-                        T("Qualidade Inferior (Validade)", "Quality Degradation (Shelf Life)"),
-                        T("Forçar Procura Real (Kg)", "Force Real Demand (Kg)"),
-                        T("Redução de Capacidade", "Warehouse Capacity Reduction"),
-                        T("Alteração de Custo", "Operational Cost Change")
+                        T("Custo Armazenamento (€/m³/dia)", "Storage Cost (€/m³/day)"),
+                        T("Custo Transporte (€/m³)", "Transport Cost (€/m³)"),
+                        T("Taxa Fixa Camião (€)", "Fixed Truck Fee (€)"),
+                        T("Penalização Vendas Perdidas (% preco)", "Lost Sales Penalty (% price)"),
+                        T("Penalização Desperdício (% preco)", "Waste Penalty (% price)"),
+                        T("Penalização Stock Zero (% preco)", "Zero Stock Penalty (% price)")
                     ],
-                    key="disp_type_select"
+                    key="disp_cost_param"
                 )
-            with col_d3:
-                val_input = 0.0
-                cost_param_selected = ""
-                
-                if "Forçar Stock" in disp_type or "Force Stock" in disp_type:
-                    val_input = st.number_input(T("Novo valor de Stock (Kg):", "New Stock Value (Kg):"), min_value=0.0, max_value=5000.0, value=0.0, step=10.0, key="disp_stock_val")
-                    disp_key = "stock_override"
-                elif "Atraso de Entrega" in disp_type or "Lead Time" in disp_type:
-                    val_input = st.number_input(T("Dias adicionais de atraso:", "Additional delay days:"), min_value=1, max_value=15, value=2, step=1, key="disp_delay_val")
-                    disp_key = "delay"
-                elif "Perda de Carga" in disp_type or "In-Transit" in disp_type:
-                    val_input = st.slider(T("Percentagem de Perda (%):", "Percentage Loss (%):"), min_value=0, max_value=100, value=50, step=5, key="disp_loss_val") / 100.0
-                    disp_key = "in_transit_loss"
-                elif "Qualidade Inferior" in disp_type or "Quality" in disp_type:
-                    val_input = st.number_input(T("Nova Validade do Lote (Dias):", "New Batch Shelf Life (Days):"), min_value=1, max_value=60, value=3, step=1, key="disp_shelf_val")
-                    disp_key = "shelf_life_drop"
-                elif "Forçar Procura Real" in disp_type or "Force Real Demand" in disp_type:
-                    val_input = st.number_input(T("Nova Procura Real (Kg):", "New Real Demand (Kg):"), min_value=0.0, max_value=10000.0, value=150.0, step=10.0, key="disp_demand_val")
-                    disp_key = "demand_override"
-                elif "Redução de Capacidade" in disp_type or "Capacity" in disp_type:
-                    val_input = st.number_input(T("Nova Capacidade Máxima (Kg):", "New Max Capacity (Kg):"), min_value=10, max_value=2000, value=100, step=10, key="disp_cap_val")
-                    disp_key = "capacity_drop"
-                elif "Alteração de Custo" in disp_type or "Cost Change" in disp_type:
-                    cost_param = st.selectbox(
-                        T("Custo a alterar:", "Cost to alter:"),
-                        [
-                            T("Custo Armazenamento (€/m³/dia)", "Storage Cost (€/m³/day)"),
-                            T("Custo Transporte (€/m³)", "Transport Cost (€/m³)"),
-                            T("Taxa Fixa Camião (€)", "Fixed Truck Fee (€)"),
-                            T("Penalização Vendas Perdidas (% preco)", "Lost Sales Penalty (% price)"),
-                            T("Penalização Desperdício (% preco)", "Waste Penalty (% price)"),
-                            T("Penalização Stock Zero (% preco)", "Zero Stock Penalty (% price)")
-                        ],
-                        key="disp_cost_param"
-                    )
-                    cost_map = {
-                        T("Custo Armazenamento (€/m³/dia)", "Storage Cost (€/m³/day)"): "holding_cost",
-                        T("Custo Transporte (€/m³)", "Transport Cost (€/m³)"): "transport_cost",
-                        T("Taxa Fixa Camião (€)", "Fixed Truck Fee (€)"): "fixed_transport_cost",
-                        T("Penalização Vendas Perdidas (% preco)", "Lost Sales Penalty (% price)"): "stockout_penalty",
-                        T("Penalização Desperdício (% preco)", "Waste Penalty (% price)"): "waste_penalty",
-                        T("Penalização Stock Zero (% preco)", "Zero Stock Penalty (% price)"): "zero_stock_penalty"
-                    }
-                    cost_param_selected = cost_map[cost_param]
-                    
-                    is_pct = "Penalty" in cost_param or "Penalização" in cost_param
-                    if is_pct:
-                        val_input_pct = st.number_input(T("Novo Valor (%):", "New Value (%):"), min_value=0.0, max_value=500.0, value=50.0, step=5.0, key="disp_cost_val_pct")
-                        val_input = val_input_pct / 100.0
-                    else:
-                        val_input = st.number_input(T("Novo Custo (€):", "New Cost (€):"), min_value=0.0, max_value=2000.0, value=25.0, step=1.0, key="disp_cost_val_money")
-                    disp_key = "cost_change"
-            
-            btn_add_disp = st.button(T("➕ Adicionar Disrupção", "➕ Add Disruption"), use_container_width=True)
-            if btn_add_disp:
-                new_disp = {
-                    "day": int(disp_day),
-                    "type": disp_key,
-                    "param": cost_param_selected,
-                    "value": float(val_input),
-                    "label": f"{T('Dia', 'Day')} {disp_day}: {disp_type}" + (f" ({cost_param_selected}={val_input})" if disp_key == "cost_change" else f" ({T('Valor', 'Value')}: {val_input})")
+                cost_map = {
+                    T("Custo Armazenamento (€/m³/dia)", "Storage Cost (€/m³/day)"): "holding_cost",
+                    T("Custo Transporte (€/m³)", "Transport Cost (€/m³)"): "transport_cost",
+                    T("Taxa Fixa Camião (€)", "Fixed Truck Fee (€)"): "fixed_transport_cost",
+                    T("Penalização Vendas Perdidas (% preco)", "Lost Sales Penalty (% price)"): "stockout_penalty",
+                    T("Penalização Desperdício (% preco)", "Waste Penalty (% price)"): "waste_penalty",
+                    T("Penalização Stock Zero (% preco)", "Zero Stock Penalty (% price)"): "zero_stock_penalty"
                 }
-                st.session_state.sim_disruptions.append(new_disp)
-                st.success(T("Disrupção adicionada com sucesso!", "Disruption added successfully!"))
+                cost_param_selected = cost_map[cost_param]
+                
+                is_pct = "Penalty" in cost_param or "Penalização" in cost_param
+                if is_pct:
+                    val_input_pct = st.number_input(T("Novo Valor (%):", "New Value (%):"), min_value=0.0, max_value=500.0, value=50.0, step=5.0, key="disp_cost_val_pct")
+                    val_input = val_input_pct / 100.0
+                else:
+                    val_input = st.number_input(T("Novo Custo (€):", "New Cost (€):"), min_value=0.0, max_value=2000.0, value=25.0, step=1.0, key="disp_cost_val_money")
+                disp_key = "cost_change"
+        
+        btn_add_disp = st.button(T("➕ Adicionar Disrupção", "➕ Add Disruption"), use_container_width=True)
+        if btn_add_disp:
+            new_disp = {
+                "day": int(disp_day),
+                "type": disp_key,
+                "param": cost_param_selected,
+                "value": float(val_input),
+                "label": f"{T('Dia', 'Day')} {disp_day}: {disp_type}" + (f" ({cost_param_selected}={val_input})" if disp_key == "cost_change" else f" ({T('Valor', 'Value')}: {val_input})")
+            }
+            st.session_state.sim_disruptions.append(new_disp)
+            st.success(T("Disrupção adicionada com sucesso!", "Disruption added successfully!"))
+            st.rerun()
+            
+        if len(st.session_state.sim_disruptions) > 0:
+            st.markdown(f"**{T('Disrupções Configuradas:', 'Configured Disruptions:')}**")
+            st.session_state.sim_disruptions.sort(key=lambda x: x["day"])
+            
+            for idx, d in enumerate(st.session_state.sim_disruptions):
+                col_item1, col_item2 = st.columns([5, 1])
+                with col_item1:
+                    st.markdown(f"- 🔔 **{d['label']}**")
+                with col_item2:
+                    if st.button("❌", key=f"del_disp_{idx}"):
+                        st.session_state.sim_disruptions.pop(idx)
+                        st.rerun()
+                        
+            if st.button(T("🧹 Limpar Todas as Disrupções", "🧹 Clear All Disruptions"), key="clear_disruptions"):
+                st.session_state.sim_disruptions = []
                 st.rerun()
-                
-            if len(st.session_state.sim_disruptions) > 0:
-                st.markdown(f"**{T('Disrupções Configuradas:', 'Configured Disruptions:')}**")
-                st.session_state.sim_disruptions.sort(key=lambda x: x["day"])
-                
-                for idx, d in enumerate(st.session_state.sim_disruptions):
-                    col_item1, col_item2 = st.columns([5, 1])
-                    with col_item1:
-                        st.markdown(f"- 🔔 **{d['label']}**")
-                    with col_item2:
-                        if st.button("❌", key=f"del_disp_{idx}"):
-                            st.session_state.sim_disruptions.pop(idx)
-                            st.rerun()
-                            
-                if st.button(T("🧹 Limpar Todas as Disrupções", "🧹 Clear All Disruptions"), key="clear_disruptions"):
-                    st.session_state.sim_disruptions = []
-                    st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
                     
         # Botão para correr simulação
         btn_test = st.button(T("🏁 Iniciar Simulação e Teste Contínuo", "🏁 Start Simulation & Continuous Test"), use_container_width=True)
