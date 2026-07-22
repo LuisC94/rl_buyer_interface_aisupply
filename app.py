@@ -234,8 +234,6 @@ with st.sidebar:
 # ----------------- SESSION STATE INITS -----------------
 if 'forecast_df' not in st.session_state:
     st.session_state.forecast_df = {}
-if 'buyer_df' not in st.session_state:
-    st.session_state.buyer_df = {}
 if 'train_log' not in st.session_state:
     st.session_state.train_log = ""
 if 'test_log' not in st.session_state:
@@ -250,8 +248,6 @@ if 'trained_buyer' not in st.session_state:
     st.session_state.trained_buyer = False
 if 'last_uploaded_file_name' not in st.session_state:
     st.session_state.last_uploaded_file_name = None
-if 'last_uploaded_buyer_name' not in st.session_state:
-    st.session_state.last_uploaded_buyer_name = None
 
 # ----------------- TABS PRINCIPAIS -----------------
 tab_forecast_train, tab_buyer_train, tab_sim, tab_compare = st.tabs([
@@ -480,26 +476,6 @@ with tab_buyer_train:
             )
             forecast_type_id = "mlp" if selected_forecast_type == "MLP" else "autoformer"
             
-            uploaded_buyer_file = st.file_uploader(
-                T("Dataset de Treino Logístico (Excel/CSV) [Opcional]:", "Logistic Training Dataset (Excel/CSV) [Optional]:"),
-                type=["xlsx", "csv"],
-                key="buyer_file_uploader",
-                help=T("Se não for fornecido, a app usará o dataset de histórico carregado na Aba 1.",
-                       "If not provided, the app will use the sales history dataset uploaded in Tab 1.")
-            )
-            
-            # Detetar alteração do uploader de buyer para colocar em cache
-            if uploaded_buyer_file is not None:
-                if st.session_state.get('last_uploaded_buyer_name') != uploaded_buyer_file.name:
-                    try:
-                        if uploaded_buyer_file.name.endswith('.xlsx'):
-                            st.session_state.buyer_df[lote_id] = pd.read_excel(uploaded_buyer_file)
-                        else:
-                            st.session_state.buyer_df[lote_id] = pd.read_csv(uploaded_buyer_file)
-                        st.session_state.last_uploaded_buyer_name = uploaded_buyer_file.name
-                    except Exception as parse_ex:
-                        st.error(f"Erro ao ler ficheiro de treino do Buyer: {parse_ex}")
-            
             train_split = st.slider(T("Percentagem (%) de Dados para Treino:", "Percentage (%) of Data for Training:"), min_value=30, max_value=90, value=60, step=5, key="buyer_train_split")
             max_capacity = st.number_input(T("Capacidade Máxima do Armazém (unidades):", "Maximum Warehouse Capacity (units):"), min_value=100, max_value=5000, value=500, step=100, key="buyer_max_cap")
             max_shelf_life = st.number_input(
@@ -553,15 +529,11 @@ with tab_buyer_train:
             st.session_state.train_log = ""
             
             # Buscar dataset apropriado
-            df_buyer_train = None
-            if lote_id in st.session_state.buyer_df:
-                df_buyer_train = st.session_state.buyer_df[lote_id].copy()
-            else:
-                df_buyer_train = st.session_state.forecast_df.get(lote_id)
+            df_buyer_train = st.session_state.forecast_df.get(lote_id)
                 
             if df_buyer_train is None:
-                st.error(T("Ficheiro de dados não encontrado! Carregue o histórico de vendas na Aba 1 ou forneça um novo uploader na Aba 2.",
-                           "Data file not found! Upload sales history in Tab 1 or upload a new file in Tab 2."))
+                st.error(T("Histórico de vendas não encontrado! Por favor, carregue o dataset na Aba 1.",
+                           "Sales history not found! Please upload the dataset in Tab 1."))
             else:
                 with st.spinner(T("A preparar dados e a povoar coluna de previsões...", "Preparing data and populating predictions column...")):
                     try:
@@ -731,7 +703,7 @@ with tab_sim:
             
             test_split_option = st.radio(
                 T("Origem do dataset de teste:", "Test dataset origin:"),
-                [T("Usar os restantes (100 - X)% do dataset carregado na Aba 1/2", "Use the remaining (100 - X)% of the dataset loaded in Tab 1/2"),
+                [T("Usar os restantes (100 - X)% do dataset carregado na Aba 1", "Use the remaining (100 - X)% of the dataset loaded in Tab 1"),
                  T("Carregar novo ficheiro excel de teste (com dias futuros)", "Upload new test excel file (with future days)")]
             )
             
@@ -740,13 +712,11 @@ with tab_sim:
             
             if "Usar os restantes" in test_split_option or "Use the remaining" in test_split_option:
                 test_split_val = st.session_state.get("buyer_train_split", 60) / 100.0
-                df_test_data = st.session_state.buyer_df.get(lote_id)
-                if df_test_data is None:
-                    df_test_data = st.session_state.forecast_df.get(lote_id)
+                df_test_data = st.session_state.forecast_df.get(lote_id)
                 
                 if df_test_data is None:
-                    st.info(T("Por favor, carregue um uploader ou retorne à Aba 1/2 para validar o histórico.",
-                              "Please upload a file or return to Tab 1/2 to validate history."))
+                    st.info(T("Por favor, carregue o histórico de vendas na Aba 1.",
+                              "Please upload sales history in Tab 1."))
             else:
                 uploaded_test_file = st.file_uploader(
                     T("Dataset de Teste / Futuro:", "Test / Future Dataset:"),
