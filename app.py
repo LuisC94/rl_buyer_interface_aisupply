@@ -50,7 +50,7 @@ if os.path.exists(logo_path):
         with open(logo_path, "rb") as f:
             logo_b64 = base64.b64encode(f.read()).decode("utf-8")
         st.sidebar.markdown(
-            f'<div style="text-align: center; margin-bottom: 20px; padding-top: 10px;">'
+            f'<div style="text-align: center; margin-top: -20px; margin-bottom: 35px;">'
             f'<img src="data:image/svg+xml;base64,{logo_b64}" width="220" style="max-width: 100%;">'
             f'</div>',
             unsafe_allow_html=True
@@ -88,6 +88,9 @@ st.markdown("""
     section[data-testid="stSidebar"] {
         background-color: #f8fafc;
         border-right: 1px solid #e2e8f0;
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+        padding-top: 1.5rem !important;
     }
     
     /* Cartões Modernos com Transições Suaves */
