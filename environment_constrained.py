@@ -114,11 +114,19 @@ class StockEnvironment:
         """ Resets the world to Day 0 """
         self.current_step = 0
         
-        # Inicializa o armazém com o lote inicial no dia 0
+        # Buscar validade da primeira linha se existir
+        row = self.data.iloc[0]
+        batch_shelf_life = self.max_shelf_life
+        for col_name in ['validade', 'prazo', 'shelf_life', 'Validade/Prazo']:
+            if col_name in row:
+                batch_shelf_life = float(row[col_name])
+                break
+                
         self.active_batches = [{
             'quantity': self.stock_inicial,
             'age': 0.0,
-            'quality': 100.0
+            'quality': 100.0,
+            'max_shelf_life': batch_shelf_life
         }]
         
         self.in_transit = {}
@@ -126,22 +134,22 @@ class StockEnvironment:
         return self._get_state()
 
     def advance_batch_one_day(self, batch):
-        """ Avança a idade do lote por 1 dia. Qualidade decresce linearmente com a idade. """
-        max_life = self.max_shelf_life
+        """ Avança a idade do lote por 1 dia. """
+        max_life = batch.get('max_shelf_life', self.max_shelf_life)
         age = batch.get('age', 0.0) + 1.0
         quality = max(0.0, 100.0 * (1.0 - age / max_life))
         return {
             'quantity': batch['quantity'],
             'age': age,
-            'quality': quality
+            'quality': quality,
+            'max_shelf_life': max_life
         }
 
     def project_batch_rsl(self, batch):
-        """ Projeta os dias restantes até que a qualidade caia abaixo de 30.0 """
-        max_life = self.max_shelf_life
+        """ Projeta os dias restantes até expirar """
+        max_life = batch.get('max_shelf_life', self.max_shelf_life)
         age = batch.get('age', 0.0)
-        limit_age = 0.7 * max_life
-        rsl = max(0, int(math.ceil(limit_age - age)))
+        rsl = max(0, int(math.ceil(max_life - age)))
         return rsl
 
     def get_stock_remaining_shelf_life(self):
@@ -325,10 +333,19 @@ class StockEnvironment:
         
         accepted_arrivals = arrived_today - overflow_waste
         if accepted_arrivals > 0:
+            # Obter a validade para o dia atual a partir do dataset se existir
+            row_today = self.data.iloc[self.current_step]
+            batch_shelf_life = self.max_shelf_life
+            for col_name in ['validade', 'prazo', 'shelf_life', 'Validade/Prazo']:
+                if col_name in row_today:
+                    batch_shelf_life = float(row_today[col_name])
+                    break
+                    
             self.active_batches.append({
                 'quantity': float(accepted_arrivals),
                 'age': 0.0,
-                'quality': 100.0
+                'quality': 100.0,
+                'max_shelf_life': batch_shelf_life
             })
 
         # 3. The Oracle 
@@ -366,7 +383,8 @@ class StockEnvironment:
             if b['quantity'] <= 0:
                 continue
             b_next = self.advance_batch_one_day(b)
-            if b_next['quality'] < 30.0:
+            # Expira quando a idade atinge ou supera a validade do lote
+            if b_next['age'] >= b_next['max_shelf_life']:
                 spoilage += b_next['quantity']
             else:
                 updated_batches.append(b_next)

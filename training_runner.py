@@ -733,7 +733,9 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
             "minmax_stock_level": stock_final_hoje_minmax,
             "minmax_spoilage": spoilage_mm,
             "update_triggered": update_triggered,
-            "version_count": len(update_days)
+            "version_count": len(update_days),
+            "agent_sales": sales,
+            "missed_sales": lost_sales
         }
         
     # Done - Save final model
@@ -814,7 +816,12 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         "log_dias": log_dias,
         "log_lucro_acumulado_agente": log_lucro_acumulado_agente,
         "log_lucro_acumulado_minmax": log_lucro_acumulado_minmax,
-        "log_lucro_acumulado_oracle": log_lucro_acumulado_oracle
+        "log_lucro_acumulado_oracle": log_lucro_acumulado_oracle,
+        "log_acoes_agente": log_acoes_agente,
+        "log_vendas_agente": log_vendas_agente,
+        "log_vendas_perdidas_agente": log_vendas_perdidas_agente,
+        "log_apodrecimento_agente": log_apodrecimento_agente,
+        "log_stock_final_agente": log_stock_final_agente
     }
 
 

@@ -230,6 +230,27 @@ with st.sidebar:
     device = "cuda" if device_opt == "GPU" and torch.cuda.is_available() else "cpu"
     if device_opt == "GPU" and not torch.cuda.is_available():
         st.warning(T("Aceleração GPU (CUDA) indisponível. Usando CPU.", "GPU acceleration (CUDA) unavailable. Using CPU."))
+        
+    st.markdown("---")
+    st.markdown(f"### 📥 {T('Ficheiro de Exemplo', 'Example Template')}")
+    
+    st.markdown(T("**Estrutura de Colunas:**", "**Column Structure:**"))
+    st.code("date | sales_quantity_kg | price_per_kg | Validade/Prazo\n2015-03-01 | 150 | 2.50 | 15\n2015-03-02 | 120 | 2.45 | 15")
+    
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datasets", "exemplo_treino_previsoes.xlsx")
+    if os.path.exists(template_path):
+        try:
+            with open(template_path, "rb") as f:
+                template_bytes = f.read()
+            st.download_button(
+                label=T("📥 Descarregar Excel Exemplo", "📥 Download Example Excel"),
+                data=template_bytes,
+                file_name="exemplo_treino_inventario.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        except Exception as e_dl:
+            st.error(f"Erro ao carregar template: {e_dl}")
 
 # ----------------- SESSION STATE INITS -----------------
 if 'forecast_df' not in st.session_state:
@@ -266,6 +287,76 @@ def get_forecaster_status(lote):
 def get_buyer_status(lote):
     actor_exists = os.path.exists(os.path.join(MODELS_DIR, f"buyer_agent_{lote}_actor.pth"))
     return actor_exists
+
+def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, stock_levels):
+    fig = go.Figure()
+    
+    # 1. Line: Orders (Encomendas)
+    fig.add_trace(go.Scatter(
+        x=plot_days, y=orders, mode='lines',
+        name=T('Encomendas PPO (Ord)', 'PPO Orders (Ord)'),
+        line=dict(color='#8b5cf6', width=2.5, shape='spline'),
+        hovertemplate='%{y:.0f} un'
+    ))
+    
+    # 2. Line: Sales (Vendas)
+    fig.add_trace(go.Scatter(
+        x=plot_days, y=sales, mode='lines',
+        name=T('Vendas Efetuadas', 'Sales Made'),
+        line=dict(color='#10b981', width=2.5, shape='spline'),
+        hovertemplate='%{y:.0f} un'
+    ))
+    
+    # 3. Markers: Spoilage (Expirados)
+    spoil_x = []
+    spoil_y = []
+    for i, val in enumerate(spoilage):
+        if val > 0:
+            spoil_x.append(plot_days[i])
+            spoil_y.append(sales[i])
+            
+    if spoil_x:
+        fig.add_trace(go.Scatter(
+            x=spoil_x, y=spoil_y, mode='markers',
+            name=T('Expirados (Lixo)', 'Expired (Waste)'),
+            marker=dict(symbol='square', size=9, color='#ef4444', line=dict(width=1.5, color='#ffffff')),
+            hovertemplate=T('Dia %{x}: Produto Expirado!', 'Day %{x}: Product Expired!')
+        ))
+        
+    # 4. Markers: Stockout / Missed Sales
+    stockout_x = []
+    stockout_y = []
+    for i, val in enumerate(missed_sales):
+        if val > 0 or stock_levels[i] <= 0:
+            stockout_x.append(plot_days[i])
+            stockout_y.append(sales[i])
+            
+    if stockout_x:
+        fig.add_trace(go.Scatter(
+            x=stockout_x, y=stockout_y, mode='markers',
+            name=T('Stockout / Stock Zero', 'Stockout / Zero Stock'),
+            marker=dict(symbol='triangle-up', size=10, color='#eab308', line=dict(width=1.5, color='#ffffff')),
+            hovertemplate=T('Dia %{x}: Rotura de Stock!', 'Day %{x}: Out of Stock!')
+        ))
+        
+    fig.update_layout(
+        title=dict(
+            text=T("Gráfico de Diagnóstico: Vendas vs Encomendas", "Diagnostic Chart: Sales vs Orders"),
+            font=dict(size=16, weight='bold')
+        ),
+        xaxis=dict(title=T("Dias", "Days"), showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1'),
+        yaxis=dict(title=T("Quantidade (un)", "Quantity (units)"), showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1'),
+        hovermode="x unified",
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#f8fafc",
+        font=dict(family='"Segoe UI", "Roboto", sans-serif', color="#1e293b"),
+        legend=dict(
+            orientation="h", y=1.1, x=0.5, xanchor="center",
+            bgcolor="rgba(255, 255, 255, 0.8)", bordercolor="#cbd5e1", borderwidth=1
+        ),
+        margin=dict(t=60, b=45, l=50, r=20)
+    )
+    return fig
 
 # =====================================================================
 # TAB 1: TREINAR MODELO DE PREVISÃO
@@ -305,13 +396,20 @@ with tab_forecast_train:
                     col_mapping = {
                         'Data': 'date', 'date': 'date',
                         'Vendas_Kg': 'sales_quantity_kg', 'sales_quantity_kg': 'sales_quantity_kg',
-                        'Preco_Kg': 'price_per_kg', 'price_per_kg': 'price_per_kg'
+                        'Preco_Kg': 'price_per_kg', 'price_per_kg': 'price_per_kg',
+                        'Validade/Prazo': 'validade', 'validade': 'validade', 'prazo': 'validade', 'shelf_life': 'validade', 'Validade': 'validade'
                     }
                     df_temp = df_temp.rename(columns=col_mapping)
                     df_temp['date'] = pd.to_datetime(df_temp['date']).dt.date
                     if 'price_per_kg' not in df_temp.columns:
                         df_temp['price_per_kg'] = 2.0
-                    df_temp = df_temp[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg'])
+                        
+                    keep_cols = ['date', 'sales_quantity_kg', 'price_per_kg']
+                    if 'validade' in df_temp.columns:
+                        keep_cols.append('validade')
+                        df_temp['validade'] = pd.to_numeric(df_temp['validade'], errors='coerce')
+                        
+                    df_temp = df_temp[keep_cols].dropna(subset=['date', 'sales_quantity_kg'])
                     
                     st.session_state.forecast_df[lote_id] = df_temp
                     st.session_state.last_uploaded_file_name = uploaded_fc_file.name
@@ -479,7 +577,7 @@ with tab_buyer_train:
             train_split = st.slider(T("Percentagem (%) de Dados para Treino:", "Percentage (%) of Data for Training:"), min_value=30, max_value=90, value=60, step=5, key="buyer_train_split")
             max_capacity = st.number_input(T("Capacidade Máxima do Armazém (unidades):", "Maximum Warehouse Capacity (units):"), min_value=100, max_value=5000, value=500, step=100, key="buyer_max_cap")
             max_shelf_life = st.number_input(
-                T("Validade Máxima do Produto (Dias):", "Maximum Product Shelf Life (Days):"),
+                T("Validade do Produto (Dias):", "Product Shelf Life (Days):"),
                 min_value=2,
                 max_value=120,
                 value=15,
@@ -487,11 +585,11 @@ with tab_buyer_train:
                 key="buyer_max_shelf_life"
             )
             max_episodes = st.number_input(
-                T("Número Máximo de Episódios de Treino:", "Maximum Training Episodes:"),
+                T("Número Máximo de Simulações:", "Maximum Number of Training Simulations:  Min-64, Recommended-20000"),
                 min_value=64,
-                max_value=10000,
-                value=640,
-                step=64,
+                max_value=20000,
+                value=64, 
+                step=64, 
                 key="buyer_max_episodes"
             )
             st.markdown('</div>', unsafe_allow_html=True)
@@ -505,6 +603,7 @@ with tab_buyer_train:
                 holding_cost = st.number_input(T("Custo Armazenamento (€/m³/dia):", "Storage Cost (€/m³/day):"), min_value=0.0, max_value=10.0, value=0.70, step=0.05, format="%.2f", key="by_hold")
                 transport_cost = st.number_input(T("Custo Transporte (€/m³):", "Transport Cost (€/m³):"), min_value=0.0, max_value=100.0, value=10.00, step=0.50, format="%.2f", key="by_trans")
                 fixed_transport_cost = st.number_input(T("Taxa Fixa Camião (€):", "Fixed Truck Fee (€):"), min_value=0.0, max_value=500.0, value=10.00, step=1.00, format="%.2f", key="by_fixed_trans")
+                product_volume_val = st.number_input(T("Volume do Produto (m³):", "Product Volume (m³):"), min_value=0.0001, max_value=10.0, value=0.002, step=0.0005, format="%.4f", key="by_prod_volume")
             with col_b2:
                 stockout_penalty_val = st.number_input(T("Penalização Vendas Perdidas (% preço):", "Lost Sales Penalty (% price):"), min_value=0.0, max_value=200.0, value=25.0, step=5.0, key="by_stockout_pct") / 100.0
                 waste_penalty_val = st.number_input(T("Penalização Desperdício (% preço):", "Waste Penalty (% price):"), min_value=0.0, max_value=500.0, value=100.0, step=10.0, key="by_waste_pct") / 100.0
@@ -541,13 +640,20 @@ with tab_buyer_train:
                         col_mapping = {
                             'Data': 'date', 'date': 'date',
                             'Vendas_Kg': 'sales_quantity_kg', 'sales_quantity_kg': 'sales_quantity_kg',
-                            'Preco_Kg': 'price_per_kg', 'price_per_kg': 'price_per_kg'
+                            'Preco_Kg': 'price_per_kg', 'price_per_kg': 'price_per_kg',
+                            'Validade/Prazo': 'validade', 'validade': 'validade', 'prazo': 'validade', 'shelf_life': 'validade', 'Validade': 'validade'
                         }
                         df_buyer_train = df_buyer_train.rename(columns=col_mapping)
                         df_buyer_train['date'] = pd.to_datetime(df_buyer_train['date']).dt.date
                         if 'price_per_kg' not in df_buyer_train.columns:
                             df_buyer_train['price_per_kg'] = 2.0
-                        df_buyer_train = df_buyer_train[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg'])
+                            
+                        keep_cols = ['date', 'sales_quantity_kg', 'price_per_kg']
+                        if 'validade' in df_buyer_train.columns:
+                            keep_cols.append('validade')
+                            df_buyer_train['validade'] = pd.to_numeric(df_buyer_train['validade'], errors='coerce')
+                            
+                        df_buyer_train = df_buyer_train[keep_cols].dropna(subset=['date', 'sales_quantity_kg'])
                         
                         # Alimentar o uploader de previsões a partir do modelo pré-treinado
                         df_buyer_with_pred = populate_prediction_column(lote_id, forecast_type_id, df_buyer_train, MODELS_DIR)
@@ -560,7 +666,9 @@ with tab_buyer_train:
                         }
                         df_env_format = df_buyer_with_pred.rename(columns=rename_dict)
                         if 'volume' not in df_env_format.columns:
-                            df_env_format['volume'] = 0.002
+                            df_env_format['volume'] = product_volume_val
+                        if 'validade' not in df_env_format.columns:
+                            df_env_format['validade'] = max_shelf_life
                             
                         # Escrever arquivo temporário no disco
                         temp_buyer_excel_path = os.path.join(tempfile.gettempdir(), f"buyer_train_temp_{lote_id}.xlsx")
@@ -684,6 +792,10 @@ with tab_sim:
     else:
         st.success(T("✅ Modelos prontos! Configura os parâmetros e inicia a simulação.", "✅ Models ready! Configure parameters and start the simulation."))
         
+        # Recuperar parâmetros do Buyer Agent definidos no Treino (Aba 2)
+        max_shelf_life = st.session_state.get("buyer_max_shelf_life", 15)
+        product_volume_val = st.session_state.get("by_prod_volume", 0.002)
+        
         # Escolher qual o modelo preditivo a utilizar
         available_forecasts = []
         if "mlp" in st.session_state.trained_forecasters: available_forecasts.append("MLP")
@@ -728,6 +840,25 @@ with tab_sim:
                         df_test_data = pd.read_excel(uploaded_test_file)
                     else:
                         df_test_data = pd.read_csv(uploaded_test_file)
+                        
+                    # Renomear colunas
+                    col_mapping = {
+                        'Data': 'date', 'date': 'date',
+                        'Vendas_Kg': 'sales_quantity_kg', 'sales_quantity_kg': 'sales_quantity_kg',
+                        'Preco_Kg': 'price_per_kg', 'price_per_kg': 'price_per_kg',
+                        'Validade/Prazo': 'validade', 'validade': 'validade', 'prazo': 'validade', 'shelf_life': 'validade', 'Validade': 'validade'
+                    }
+                    df_test_data = df_test_data.rename(columns=col_mapping)
+                    df_test_data['date'] = pd.to_datetime(df_test_data['date']).dt.date
+                    if 'price_per_kg' not in df_test_data.columns:
+                        df_test_data['price_per_kg'] = 2.0
+                        
+                    keep_cols = ['date', 'sales_quantity_kg', 'price_per_kg']
+                    if 'validade' in df_test_data.columns:
+                        keep_cols.append('validade')
+                        df_test_data['validade'] = pd.to_numeric(df_test_data['validade'], errors='coerce')
+                        
+                    df_test_data = df_test_data[keep_cols].dropna(subset=['date', 'sales_quantity_kg'])
                     test_split_val = 0.0 # Usar todo o ficheiro novo
                     
             st.markdown('</div>', unsafe_allow_html=True)
@@ -743,14 +874,6 @@ with tab_sim:
                 update_interval = st.number_input(T("Intervalo de Fine-Tuning (Dias):", "Fine-Tuning Interval (Days):"), min_value=1, max_value=90, value=15, help=T("Frequência de atualização contínua.", "Frequency of continuous updates."))
                 max_capacity = st.number_input(T("Capacidade Máxima Armazém:", "Max Warehouse Capacity:"), min_value=100, max_value=5000, value=st.session_state.get("buyer_max_cap", 500), step=100, key="sim_max_cap")
             
-            sim_shelf_life = st.number_input(
-                T("Validade do Produto (Dias):", "Product Shelf Life (Days):"),
-                min_value=2,
-                max_value=120,
-                value=int(st.session_state.get("buyer_max_shelf_life", 15)),
-                step=1,
-                key="sim_max_shelf_life"
-            )
             st.markdown('</div>', unsafe_allow_html=True)
             
         # Botão para correr simulação
@@ -759,6 +882,7 @@ with tab_sim:
         col_chart, col_side_logs = st.columns([7, 5])
         with col_chart:
             chart_placeholder = st.empty()
+            chart_placeholder_diagnostics = st.empty()
         with col_side_logs:
             st.markdown(f'<div class="console-header">🤖 {T("Logs Diários da Simulação", "Daily Simulation Logs")}</div>', unsafe_allow_html=True)
             test_console_placeholder = st.empty()
@@ -795,7 +919,9 @@ with tab_sim:
                         }
                         df_env_test_format = df_test_with_pred.rename(columns=rename_dict)
                         if 'volume' not in df_env_test_format.columns:
-                            df_env_test_format['volume'] = 0.002
+                            df_env_test_format['volume'] = product_volume_val
+                        if 'validade' not in df_env_test_format.columns:
+                            df_env_test_format['validade'] = max_shelf_life
                             
                         # Gravar ficheiro temporário para simulação
                         temp_sim_excel_path = os.path.join(tempfile.gettempdir(), f"buyer_sim_temp_{lote_id}.xlsx")
@@ -822,11 +948,12 @@ with tab_sim:
                             stockout_penalty=st.session_state.get("by_stockout_pct", 25.0)/100.0,
                             waste_penalty=st.session_state.get("by_waste_pct", 100.0)/100.0,
                             zero_stock_penalty=st.session_state.get("by_zero_pct", 500.0)/100.0,
-                            max_shelf_life=sim_shelf_life
+                            max_shelf_life=max_shelf_life
                         )
                         
                         plot_data = {
-                            "Dia": [], "RL Agent": [], "Min-Max": [], "Oracle": [], "Real Demand": [], "Stock Level": []
+                            "Dia": [], "RL Agent": [], "Min-Max": [], "Oracle": [], "Real Demand": [], "Stock Level": [],
+                            "Agent Action": [], "Agent Sales": [], "Spoilage": [], "Missed Sales": []
                         }
                         
                         fig = go.Figure()
@@ -873,6 +1000,10 @@ with tab_sim:
                                 plot_data["Oracle"].append(sim_step["oracle_profit_cum"])
                                 plot_data["Real Demand"].append(sim_step["real_demand"])
                                 plot_data["Stock Level"].append(sim_step["stock_level"])
+                                plot_data["Agent Action"].append(sim_step["agent_action"])
+                                plot_data["Agent Sales"].append(sim_step["agent_sales"])
+                                plot_data["Spoilage"].append(sim_step["spoilage"])
+                                plot_data["Missed Sales"].append(sim_step["missed_sales"])
                                 
                                 if sim_step["day"] % 3 == 0 or sim_step["update_triggered"]:
                                     fig_real = go.Figure()
@@ -912,6 +1043,16 @@ with tab_sim:
                                         margin=dict(t=60, b=40, l=50, r=20)
                                     )
                                     chart_placeholder.plotly_chart(fig_real, use_container_width=True)
+                                    
+                                    fig_diag = create_diagnostics_chart(
+                                        plot_data["Dia"],
+                                        plot_data["Agent Action"],
+                                        plot_data["Agent Sales"],
+                                        plot_data["Spoilage"],
+                                        plot_data["Missed Sales"],
+                                        plot_data["Stock Level"]
+                                    )
+                                    chart_placeholder_diagnostics.plotly_chart(fig_diag, use_container_width=True)
                                     
                             elif status == "complete":
                                 st.session_state.test_log += msg + "\n"
@@ -975,7 +1116,7 @@ with tab_sim:
             st.markdown("---")
             st.markdown(f"### 📊 {T('Scorecard de Resultados', 'Results Scorecard')}")
             
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2, c3, c4, c5 = st.columns(5)
             with c1:
                 st.markdown(
                     f'<div class="metric-card">'
@@ -993,11 +1134,18 @@ with tab_sim:
             with c3:
                 st.markdown(
                     f'<div class="metric-card">'
+                    f'<div class="metric-label">{T("Produtos Expirados", "Expired Products")}</div>'
+                    f'<div class="metric-val" style="color: #ef4444;">{res["spoilage_total"]:.0f} un</div>'
+                    f'</div>', unsafe_allow_html=True
+                )
+            with c4:
+                st.markdown(
+                    f'<div class="metric-card">'
                     f'<div class="metric-label">{T("Vendas Perdidas", "Lost Sales")}</div>'
                     f'<div class="metric-val" style="color: #eab308;">{res["lost_sales_total"]:.0f} un</div>'
                     f'</div>', unsafe_allow_html=True
                 )
-            with c4:
+            with c5:
                 st.markdown(
                     f'<div class="metric-card">'
                     f'<div class="metric-label">{T("Dias Stock Zero", "Zero Stock Days")}</div>'
@@ -1060,6 +1208,18 @@ with tab_sim:
                     margin=dict(t=60, b=45, l=50, r=20)
                 )
                 st.plotly_chart(fig_final, use_container_width=True)
+                
+                # Gráfico de Diagnóstico: Vendas vs Encomendas
+                st.markdown(f"#### {T('Gráfico de Diagnóstico: Vendas vs Encomendas', 'Diagnostic Chart: Sales vs Orders')}")
+                fig_diag_final = create_diagnostics_chart(
+                    res["log_dias"],
+                    res.get("log_acoes_agente", []),
+                    res.get("log_vendas_agente", []),
+                    res.get("log_apodrecimento_agente", []),
+                    res.get("log_vendas_perdidas_agente", []),
+                    res.get("log_stock_final_agente", [])
+                )
+                st.plotly_chart(fig_diag_final, use_container_width=True)
                 
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.markdown(f"#### 📥 {T('Exportar Resultados e Modelo Otimizado', 'Export Results & Optimized Model')}")
