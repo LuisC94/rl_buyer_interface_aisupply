@@ -950,14 +950,15 @@ with tab_sim:
                         )
                         
                         plot_data = {
-                            "Dia": [], "RL Agent": [], "Min-Max": [], "Oracle": [], "Real Demand": [], "Stock Level": [],
+                            "Dia": [], "RL Agent": [], "Min-Max": [], "Time Supply": [], "Floating Point": [], "Real Demand": [], "Stock Level": [],
                             "Agent Action": [], "Agent Sales": [], "Spoilage": [], "Missed Sales": []
                         }
                         
                         fig = go.Figure()
                         fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='RL Agent (Profit Acumulado)', line=dict(color='#ff8c00', width=2.5)))
                         fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='Min-Max Baseline', line=dict(color='#64748b', width=1.5, dash='dot')))
-                        fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='Oráculo (God Mode)', line=dict(color='#0ea5e9', width=2.0, dash='dash')))
+                        fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='Time Supply Baseline', line=dict(color='#3b82f6', width=1.5, dash='dash')))
+                        fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='Floating Point Baseline', line=dict(color='#06b6d4', width=1.5, dash='dashdot')))
                         fig.update_layout(
                             title=T("Evolução Comparativa do Lucro Acumulado em Tempo Real", "Real-Time Cumulative Profit Comparison"),
                             xaxis_title=T("Dias", "Days"),
@@ -995,7 +996,8 @@ with tab_sim:
                                 plot_data["Dia"].append(sim_step["day"])
                                 plot_data["RL Agent"].append(sim_step["agent_profit_cum"])
                                 plot_data["Min-Max"].append(sim_step["minmax_profit_cum"])
-                                plot_data["Oracle"].append(sim_step["oracle_profit_cum"])
+                                plot_data["Time Supply"].append(sim_step["timesupply_profit_cum"])
+                                plot_data["Floating Point"].append(sim_step["floatingpoint_profit_cum"])
                                 plot_data["Real Demand"].append(sim_step["real_demand"])
                                 plot_data["Stock Level"].append(sim_step["stock_level"])
                                 plot_data["Agent Action"].append(sim_step["agent_action"])
@@ -1018,9 +1020,15 @@ with tab_sim:
                                         hovertemplate='%{y:,.2f}€'
                                     ))
                                     fig_real.add_trace(go.Scatter(
-                                        x=plot_data["Dia"], y=plot_data["Oracle"], mode='lines',
-                                        name=f'Oráculo ({plot_data["Oracle"][-1]:.0f}€)',
+                                        x=plot_data["Dia"], y=plot_data["Time Supply"], mode='lines',
+                                        name=f'Time Supply ({plot_data["Time Supply"][-1]:.0f}€)',
                                         line=dict(color='#3b82f6', width=2.0, dash='dash', shape='spline'),
+                                        hovertemplate='%{y:,.2f}€'
+                                    ))
+                                    fig_real.add_trace(go.Scatter(
+                                        x=plot_data["Dia"], y=plot_data["Floating Point"], mode='lines',
+                                        name=f'Floating Point ({plot_data["Floating Point"][-1]:.0f}€)',
+                                        line=dict(color='#06b6d4', width=2.0, dash='dashdot', shape='spline'),
                                         hovertemplate='%{y:,.2f}€'
                                     ))
                                     fig_real.update_layout(
@@ -1075,9 +1083,15 @@ with tab_sim:
                                     hovertemplate='%{y:,.2f}€'
                                 ))
                                 fig_final.add_trace(go.Scatter(
-                                    x=plot_data["Dia"], y=plot_data["Oracle"], mode='lines',
-                                    name=f'Oráculo ({sim_step["cum_profit_oracle"]:.1f}€)',
+                                    x=plot_data["Dia"], y=plot_data["Time Supply"], mode='lines',
+                                    name=f'Time Supply ({sim_step["cum_profit_timesupply"]:.1f}€)',
                                     line=dict(color='#3b82f6', width=2.0, dash='dash', shape='spline'),
+                                    hovertemplate='%{y:,.2f}€'
+                                ))
+                                fig_final.add_trace(go.Scatter(
+                                    x=plot_data["Dia"], y=plot_data["Floating Point"], mode='lines',
+                                    name=f'Floating Point ({sim_step["cum_profit_floatingpoint"]:.1f}€)',
+                                    line=dict(color='#06b6d4', width=2.0, dash='dashdot', shape='spline'),
                                     hovertemplate='%{y:,.2f}€'
                                 ))
                                 
@@ -1179,9 +1193,15 @@ with tab_sim:
                     hovertemplate='%{y:,.2f}€'
                 ))
                 fig_final.add_trace(go.Scatter(
-                    x=res["log_dias"], y=res["log_lucro_acumulado_oracle"], mode='lines',
-                    name=f'Oráculo ({res["cum_profit_oracle"]:.1f}€)',
+                    x=res["log_dias"], y=res["log_lucro_acumulado_timesupply"], mode='lines',
+                    name=f'Time Supply ({res["cum_profit_timesupply"]:.1f}€)',
                     line=dict(color='#3b82f6', width=2.0, dash='dash', shape='spline'),
+                    hovertemplate='%{y:,.2f}€'
+                ))
+                fig_final.add_trace(go.Scatter(
+                    x=res["log_dias"], y=res["log_lucro_acumulado_floatingpoint"], mode='lines',
+                    name=f'Floating Point ({res["cum_profit_floatingpoint"]:.1f}€)',
+                    line=dict(color='#06b6d4', width=2.0, dash='dashdot', shape='spline'),
                     hovertemplate='%{y:,.2f}€'
                 ))
                 

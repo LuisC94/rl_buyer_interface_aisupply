@@ -452,11 +452,17 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
                                   stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
                                   max_shelf_life=max_shelf_life)
     env_minmax.max_order_limit = float('inf') # Sem limite de encomenda para o Baseline
-    env_oracle = StockEnvironment(excel_path=excel_path, is_training=False, train_split=train_split, max_capacity=max_capacity,
-                                  holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
-                                  stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
-                                  max_shelf_life=max_shelf_life)
-    env_oracle.max_order_limit = float('inf') # Sem limite de encomenda para o Oráculo
+    env_timesupply = StockEnvironment(excel_path=excel_path, is_training=False, train_split=train_split, max_capacity=max_capacity,
+                                      holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
+                                      stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                                      max_shelf_life=max_shelf_life)
+    env_timesupply.max_order_limit = float('inf') # Sem limite de encomenda para o Baseline
+    
+    env_floatingpoint = StockEnvironment(excel_path=excel_path, is_training=False, train_split=train_split, max_capacity=max_capacity,
+                                        holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
+                                        stockout_penalty=stockout_penalty, waste_penalty=waste_penalty, zero_stock_penalty=zero_stock_penalty,
+                                        max_shelf_life=max_shelf_life)
+    env_floatingpoint.max_order_limit = float('inf') # Sem limite de encomenda para o Baseline
     
     env_train = StockEnvironment(excel_path=excel_path, is_training=True, train_split=train_split, max_capacity=max_capacity,
                                  holding_cost=holding_cost, transport_cost=transport_cost, fixed_transport_cost=fixed_transport_cost,
@@ -485,7 +491,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         try:
             econ_state = torch.load(econ_stat_path, weights_only=False, map_location='cpu')
             yield {"status": "init", "msg": "[OK] Environment Z-Score stats loaded!"}
-            for env in [env_test, env_minmax, env_oracle, env_train]:
+            for env in [env_test, env_minmax, env_timesupply, env_floatingpoint, env_train]:
                 env.stat_profit.n = econ_state['n']
                 env.stat_profit.mean = econ_state['mean']
                 env.stat_profit.S = econ_state['S']
@@ -499,7 +505,8 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
     
     state = env_test.reset()
     state_minmax = env_minmax.reset()
-    state_oracle = env_oracle.reset()
+    state_timesupply = env_timesupply.reset()
+    state_floatingpoint = env_floatingpoint.reset()
     
     done = False
     
@@ -510,13 +517,15 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
     vendas_reais = []
     
     profits_minmax = []
-    profits_oracle = []
+    profits_timesupply = []
+    profits_floatingpoint = []
     
     update_days = []
     
     cum_profit_agent = 0
     cum_profit_minmax = 0
-    cum_profit_oracle = 0
+    cum_profit_timesupply = 0
+    cum_profit_floatingpoint = 0
     
     dias_simulados = 0
     
@@ -527,7 +536,8 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
     
     log_acoes_agente = []
     log_acoes_minmax = []
-    log_acoes_oracle = []
+    log_acoes_timesupply = []
+    log_acoes_floatingpoint = []
     
     log_stock_inicial_agente = []
     log_stock_final_agente = []
@@ -539,7 +549,8 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
     log_lucro_diario_agente = []
     log_lucro_acumulado_agente = []
     log_lucro_acumulado_minmax = []
-    log_lucro_acumulado_oracle = []
+    log_lucro_acumulado_timesupply = []
+    log_lucro_acumulado_floatingpoint = []
 
     # Min-Max detailed logs
     log_stock_inicial_minmax = []
@@ -550,14 +561,16 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
     log_excesso_minmax = []
     log_lucro_diario_minmax = []
     
-    # Oracle detailed logs
-    log_stock_inicial_oracle = []
-    log_stock_final_oracle = []
-    log_vendas_oracle = []
-    log_vendas_perdidas_oracle = []
-    log_apodrecimento_oracle = []
-    log_excesso_oracle = []
-    log_lucro_diario_oracle = []
+    # Time Supply and Floating Point detailed logs
+    log_stock_inicial_timesupply = []
+    log_stock_final_timesupply = []
+    log_vendas_timesupply = []
+    log_lucro_diario_timesupply = []
+    
+    log_stock_inicial_floatingpoint = []
+    log_stock_final_floatingpoint = []
+    log_vendas_floatingpoint = []
+    log_lucro_diario_floatingpoint = []
     
     flag_stockout = []
     flag_clientes_perdidos = []
@@ -600,41 +613,80 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         log_excesso_minmax.append(overcapacity_waste_mm)
         log_lucro_diario_minmax.append(info_minmax['profit'])
         
-        # --- ORACLE BASELINE ---
-        stock_hoje_oracle = sum(env_oracle.stock_profile) + env_oracle.in_transit.get(env_oracle.current_step, 0)
-        vendas_hoje_oracle = env_oracle.data.iloc[env_oracle.current_step]['real_value']
-        stock_amanha_oracle = max(0, stock_hoje_oracle - vendas_hoje_oracle) + env_oracle.in_transit.get(env_oracle.current_step + 1, 0)
-        
-        action_oracle = 0
-        demand_tomorrow = env_oracle.data.iloc[env_oracle.current_step + 1]['real_value'] if env_oracle.current_step + 1 <= env_oracle.max_steps else 0
-        
-        if stock_amanha_oracle < demand_tomorrow:
-            future_demand = 0
-            for i in range(1, 5): # T+1 a T+4
-                idx = env_oracle.current_step + i
-                if idx <= env_oracle.max_steps:
-                    future_demand += env_oracle.data.iloc[idx]['real_value']
-            action_oracle = max(0, future_demand - stock_amanha_oracle)
-            action_oracle = min(action_oracle, max_capacity)
+        # --- TIME SUPPLY BASELINE ---
+        horizon_days = 7
+        forecast_sum = 0
+        count = 0
+        for i in range(1, horizon_days + 1):
+            idx = env_timesupply.current_step + i
+            if idx <= env_timesupply.max_steps:
+                forecast_sum += env_timesupply.data.iloc[idx]['prediction']
+                count += 1
+        if count > 0:
+            avg_forecast = forecast_sum / count
+        else:
+            avg_forecast = env_timesupply.data.iloc[env_timesupply.current_step]['prediction']
             
-        stock_inicial_hoje_oracle = sum(env_oracle.stock_profile)
-        _, _, _, info_oracle = env_oracle.step(action_oracle)
-        cum_profit_oracle += info_oracle['profit']
-        profits_oracle.append(cum_profit_oracle)
+        min_time_supply_days = 3
+        max_time_supply_days = 7
+        order_point_ts = avg_forecast * min_time_supply_days
+        order_up_to_ts = avg_forecast * max_time_supply_days
         
-        stock_final_hoje_oracle = sum(env_oracle.stock_profile)
-        sales_or = info_oracle['sales']
-        spoilage_or = info_oracle['spoilage']
-        lost_sales_or = max(0, info_oracle['real_demand'] - sales_or)
-        overcapacity_waste_or = max(0, info_oracle['overflow_waste'] - spoilage_or)
+        stock_hoje_ts = sum(env_timesupply.stock_profile) + env_timesupply.in_transit.get(env_timesupply.current_step, 0)
+        vendas_hoje_ts = env_timesupply.data.iloc[env_timesupply.current_step]['real_value']
+        stock_amanha_ts = max(0, stock_hoje_ts - vendas_hoje_ts) + env_timesupply.in_transit.get(env_timesupply.current_step + 1, 0)
         
-        log_stock_inicial_oracle.append(stock_inicial_hoje_oracle)
-        log_stock_final_oracle.append(stock_final_hoje_oracle)
-        log_vendas_oracle.append(sales_or)
-        log_vendas_perdidas_oracle.append(lost_sales_or)
-        log_apodrecimento_oracle.append(spoilage_or)
-        log_excesso_oracle.append(overcapacity_waste_or)
-        log_lucro_diario_oracle.append(info_oracle['profit'])
+        action_timesupply = 0
+        if stock_amanha_ts <= order_point_ts:
+            action_timesupply = max(0.0, order_up_to_ts - stock_amanha_ts)
+            action_timesupply = min(action_timesupply, max_capacity)
+        action_timesupply = int(round(action_timesupply))
+            
+        stock_inicial_hoje_ts = sum(env_timesupply.stock_profile)
+        _, _, _, info_timesupply = env_timesupply.step(action_timesupply)
+        cum_profit_timesupply += info_timesupply['profit']
+        profits_timesupply.append(cum_profit_timesupply)
+        log_stock_inicial_timesupply.append(stock_inicial_hoje_ts)
+        log_stock_final_timesupply.append(sum(env_timesupply.stock_profile))
+        log_vendas_timesupply.append(info_timesupply['sales'])
+        log_lucro_diario_timesupply.append(info_timesupply['profit'])
+        log_acoes_timesupply.append(action_timesupply)
+        log_lucro_acumulado_timesupply.append(cum_profit_timesupply)
+        
+        # --- FLOATING POINT BASELINE ---
+        split_index = int(len(env_floatingpoint.df) * train_split)
+        global_idx = split_index + env_floatingpoint.current_step
+        lookback = env_floatingpoint.df.iloc[max(0, global_idx - 14):global_idx]
+        if len(lookback) > 0 and 'real_value' in lookback.columns:
+            avg_historic_sales = lookback['real_value'].mean()
+        else:
+            avg_historic_sales = 15.0
+            
+        floating_min_days = 2
+        floating_max_days = 5
+        floating_min_stock = avg_historic_sales * floating_min_days
+        floating_max_stock = avg_historic_sales * floating_max_days
+        
+        stock_hoje_fp = sum(env_floatingpoint.stock_profile) + env_floatingpoint.in_transit.get(env_floatingpoint.current_step, 0)
+        vendas_hoje_fp = env_floatingpoint.data.iloc[env_floatingpoint.current_step]['real_value']
+        stock_amanha_fp = max(0, stock_hoje_fp - vendas_hoje_fp) + env_floatingpoint.in_transit.get(env_floatingpoint.current_step + 1, 0)
+        
+        action_floatingpoint = 0
+        if stock_amanha_fp <= floating_min_stock:
+            action_floatingpoint = max(0.0, floating_max_stock - stock_amanha_fp)
+            action_floatingpoint = min(action_floatingpoint, max_capacity)
+        action_floatingpoint = int(round(action_floatingpoint))
+            
+        stock_inicial_hoje_fp = sum(env_floatingpoint.stock_profile)
+        _, _, _, info_floatingpoint = env_floatingpoint.step(action_floatingpoint)
+        cum_profit_floatingpoint += info_floatingpoint['profit']
+        profits_floatingpoint.append(cum_profit_floatingpoint)
+        log_stock_inicial_floatingpoint.append(stock_inicial_hoje_fp)
+        log_stock_final_floatingpoint.append(sum(env_floatingpoint.stock_profile))
+        log_vendas_floatingpoint.append(info_floatingpoint['sales'])
+        log_lucro_diario_floatingpoint.append(info_floatingpoint['profit'])
+        log_acoes_floatingpoint.append(action_floatingpoint)
+        log_lucro_acumulado_floatingpoint.append(cum_profit_floatingpoint)
         
         # --- RL AGENT ---
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(agent.device)
@@ -649,7 +701,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         next_state, reward, done_env, info = env_test.step(physical_action)
         done = done_env
         
-        log_msg = f"[Dia {day:03d}] Encomendas -> Agente: {info['order_placed']:03d} | MinMax: {info_minmax['order_placed']:03d} | Oráculo: {info_oracle['order_placed']:03d} || Lucro Agente: {info['profit']:.1f}€ | MinMax: {info_minmax['profit']:.1f}€"
+        log_msg = f"[Dia {day:03d}] Encomendas -> Agente: {info['order_placed']:03d} | MinMax: {info_minmax['order_placed']:03d} | TimeSupply: {action_timesupply:03d} | FloatingPoint: {action_floatingpoint:03d} || Lucro Agente: {info['profit']:.1f}€ | MinMax: {info_minmax['profit']:.1f}€"
         
         # Store experience
         current_15d_buffer.append({
@@ -680,7 +732,6 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         log_preco_venda.append(info['price_today'])
         log_acoes_agente.append(info['order_placed'])
         log_acoes_minmax.append(info_minmax['order_placed'])
-        log_acoes_oracle.append(info_oracle['order_placed'])
         log_stock_inicial_agente.append(stock_inicial_hoje)
         log_stock_final_agente.append(stock_final_hoje)
         log_vendas_agente.append(sales)
@@ -690,7 +741,6 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         log_lucro_diario_agente.append(info['profit'])
         log_lucro_acumulado_agente.append(cum_profit_agent)
         log_lucro_acumulado_minmax.append(cum_profit_minmax)
-        log_lucro_acumulado_oracle.append(cum_profit_oracle)
         
         flag_stockout.append(1 if stock_final_hoje <= 0 else 0)
         flag_clientes_perdidos.append(1 if lost_sales > 0 else 0)
@@ -721,10 +771,12 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
             "msg": log_msg,
             "agent_profit_cum": cum_profit_agent,
             "minmax_profit_cum": cum_profit_minmax,
-            "oracle_profit_cum": cum_profit_oracle,
+            "timesupply_profit_cum": cum_profit_timesupply,
+            "floatingpoint_profit_cum": cum_profit_floatingpoint,
             "agent_action": info['order_placed'],
             "minmax_action": info_minmax['order_placed'],
-            "oracle_action": info_oracle['order_placed'],
+            "timesupply_action": action_timesupply,
+            "floatingpoint_action": action_floatingpoint,
             "real_demand": real_demand,
             "stock_level": stock_final_hoje,
             "order_placed": info['order_placed'],
@@ -780,16 +832,21 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
             'Lucro_Diario_MinMax': log_lucro_diario_minmax,
             'Lucro_Acumulado_MinMax': log_lucro_acumulado_minmax,
             
-            # ORÁCULO
-            'Acao_Oraculo': log_acoes_oracle,
-            'Stock_Inicial_Oracle': log_stock_inicial_oracle,
-            'Stock_Final_Oracle': log_stock_final_oracle,
-            'Vendas_Oracle': log_vendas_oracle,
-            'Vendas_Perdidas_Oracle': log_vendas_perdidas_oracle,
-            'Desperdicio_Validade_Oracle': log_apodrecimento_oracle,
-            'Excesso_Armazem_Oracle': log_excesso_oracle,
-            'Lucro_Diario_Oracle': log_lucro_diario_oracle,
-            'Lucro_Acumulado_Oraculo': log_lucro_acumulado_oracle,
+            # TIME SUPPLY
+            'Acao_TimeSupply': log_acoes_timesupply,
+            'Stock_Inicial_TimeSupply': log_stock_inicial_timesupply,
+            'Stock_Final_TimeSupply': log_stock_final_timesupply,
+            'Vendas_TimeSupply': log_vendas_timesupply,
+            'Lucro_Diario_TimeSupply': log_lucro_diario_timesupply,
+            'Lucro_Acumulado_TimeSupply': log_lucro_acumulado_timesupply,
+            
+            # FLOATING POINT
+            'Acao_FloatingPoint': log_acoes_floatingpoint,
+            'Stock_Inicial_FloatingPoint': log_stock_inicial_floatingpoint,
+            'Stock_Final_FloatingPoint': log_stock_final_floatingpoint,
+            'Vendas_FloatingPoint': log_vendas_floatingpoint,
+            'Lucro_Diario_FloatingPoint': log_lucro_diario_floatingpoint,
+            'Lucro_Acumulado_FloatingPoint': log_lucro_acumulado_floatingpoint,
             
             'Flag_Stockout': flag_stockout,
             'Flag_Clientes_Perdidos': flag_clientes_perdidos,
@@ -805,7 +862,8 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         "msg": f"[COMPLETED] Simulation finished after {dias_simulados} days.",
         "cum_profit_agent": cum_profit_agent,
         "cum_profit_minmax": cum_profit_minmax,
-        "cum_profit_oracle": cum_profit_oracle,
+        "cum_profit_timesupply": cum_profit_timesupply,
+        "cum_profit_floatingpoint": cum_profit_floatingpoint,
         "stockout_days": sum(flag_stockout),
         "spoilage_total": sum(log_apodrecimento_agente),
         "lost_sales_total": sum(log_vendas_perdidas_agente),
@@ -816,7 +874,8 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         "log_dias": log_dias,
         "log_lucro_acumulado_agente": log_lucro_acumulado_agente,
         "log_lucro_acumulado_minmax": log_lucro_acumulado_minmax,
-        "log_lucro_acumulado_oracle": log_lucro_acumulado_oracle,
+        "log_lucro_acumulado_timesupply": log_lucro_acumulado_timesupply,
+        "log_lucro_acumulado_floatingpoint": log_lucro_acumulado_floatingpoint,
         "log_acoes_agente": log_acoes_agente,
         "log_vendas_agente": log_vendas_agente,
         "log_vendas_perdidas_agente": log_vendas_perdidas_agente,
