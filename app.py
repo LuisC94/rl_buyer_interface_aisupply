@@ -222,6 +222,22 @@ with col_desc:
 
 # ----------------- SIDEBAR: GLOBAL CONFIGS & LOT SELECTOR -----------------
 with st.sidebar:
+    # Mostrar Logotipo da Empresa (Retail Consult)
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "retail-logo.svg")
+    if os.path.exists(logo_path):
+        try:
+            import base64
+            with open(logo_path, "rb") as f:
+                logo_b64 = base64.b64encode(f.read()).decode("utf-8")
+            st.markdown(
+                f'<div style="text-align: center; margin-bottom: 20px; padding-top: 10px;">'
+                f'<img src="data:image/svg+xml;base64,{logo_b64}" width="185" style="max-width: 100%;">'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        except Exception:
+            pass
+
     lote_id = "uploaded_dataset"
     lote_label = T("Dataset Carregado", "Uploaded Dataset")
     
