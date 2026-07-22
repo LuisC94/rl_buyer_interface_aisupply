@@ -909,7 +909,7 @@ with tab_sim:
             st.markdown('</div>', unsafe_allow_html=True)
             
         # Expander de Disrupções da Cadeia de Abastecimento
-        with st.expander(T("⚠️ Simular Disrupções da Cadeia de Abastecimento (Opcional)", "⚠️ Simulate Supply Chain Disruptions (Optional)")):
+        with st.expander(T("3. Disrupções da Cadeia de Abastecimento (Opcional)", "3. Supply Chain Disruptions (Optional)")):
             st.markdown(T("Adicione eventos pontuais de disrupções para testar a resiliência do agente (ex: quebras de stock, atrasos de camião, picos de procura ou alteração de custos operacionais).",
                           "Add custom disruption events to stress test the agent's resilience (e.g. stock outages, truck delays, demand spikes, or operational cost changes)."))
             
