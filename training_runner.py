@@ -435,7 +435,7 @@ def continual_training_step(agent, new_experiences, env_train, max_action_val, l
 def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_base_path, s_min, S_max, update_interval_days=15, online_lr_actor=1e-5, online_lr_critic=5e-5, online_batch_size=32, save_dir="modelos_producao_constrained",
                            holding_cost=0.70, transport_cost=10.0, fixed_transport_cost=10.0,
                            stockout_penalty=0.25, waste_penalty=1.0, zero_stock_penalty=5.0,
-                           max_shelf_life=15.0):
+                           max_shelf_life=15.0, disruptions=None):
     """
     Runs evaluation simulation, comparing RL Agent, Min-Max Baseline, and Oracle
     Yields data dictionary daily for Streamlit live charting and logging.
@@ -579,10 +579,87 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
     
     current_15d_buffer = []
     
+    if disruptions is None:
+        disruptions = []
+        
     yield {"status": "start", "msg": "[PRODUCTION] Continuous market simulation started."}
     
     while not done:
         day = env_test.current_step
+        
+        # Guardar valores originais de atributos temporários para restauro no fim do dia
+        orig_max_shelf_life = {}
+        orig_real_demands = {}
+        for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+            orig_max_shelf_life[env] = env.max_shelf_life
+            orig_real_demands[env] = env.data.at[day, 'real_value']
+            
+        # Processar disrupções para o dia atual (1-indexed na UI)
+        day_idx = day + 1
+        day_disruptions = [d for d in disruptions if d["day"] == day_idx]
+        for dis in day_disruptions:
+            dis_type = dis.get("type")
+            dis_param = dis.get("param")
+            dis_val = dis.get("value")
+            
+            # 1. FORÇAR STOCK
+            if dis_type == "stock_override":
+                val = float(dis_val)
+                for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+                    if val == 0.0:
+                        env.stock_profile = [0.0, 0.0, 0.0, 0.0]
+                        env.active_batches = []
+                    else:
+                        env.stock_profile = [val, 0.0, 0.0, 0.0]
+                        env.active_batches = [{
+                            'quantity': val,
+                            'age': 0.0,
+                            'quality': 100.0,
+                            'max_shelf_life': env.max_shelf_life
+                        }]
+                        
+            # 2. PERDA DE CARGA EM TRÂNSITO (Afeta a mercadoria que chega HOJE)
+            elif dis_type == "in_transit_loss":
+                val = float(dis_val)
+                for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+                    if day in env.in_transit:
+                        env.in_transit[day] = env.in_transit[day] * (1.0 - val)
+                        
+            # 3. QUALIDADE INFERIOR (Reduz a validade do lote que chega HOJE)
+            elif dis_type == "shelf_life_drop":
+                val = float(dis_val)
+                for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+                    env.max_shelf_life = val
+                    
+            # 4. FORÇAR PROCURA REAL
+            elif dis_type == "demand_override":
+                val = float(dis_val)
+                for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+                    env.data.at[day, 'real_value'] = val
+                    
+            # 5. REDUÇÃO DE CAPACIDADE DO ARMAZÉM (Persistente)
+            elif dis_type == "capacity_drop":
+                val = float(dis_val)
+                for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+                    env.max_capacity = val
+                    
+            # 6. ALTERAÇÃO DE CUSTO DA FUNÇÃO OBJETIVO (Persistente)
+            elif dis_type == "cost_change":
+                val = float(dis_val)
+                p_name = dis_param
+                for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+                    if p_name == "holding_cost":
+                        env.holding_cost = val
+                    elif p_name == "transport_cost":
+                        env.transport_cost = val
+                    elif p_name == "fixed_transport_cost":
+                        env.fixed_transport_cost = val
+                    elif p_name == "stockout_penalty":
+                        env.stockout_penalty = val
+                    elif p_name == "waste_penalty":
+                        env.waste_penalty = val
+                    elif p_name == "zero_stock_penalty":
+                        env.zero_stock_penalty = val
         
         # --- MIN-MAX BASELINE ---
         stock_hoje_minmax = sum(env_minmax.stock_profile) + env_minmax.in_transit.get(env_minmax.current_step, 0)
@@ -747,6 +824,21 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         flag_excesso_armazem.append(1 if overcapacity_waste > 0 else 0)
         flag_apodrecimento.append(1 if spoilage > 0 else 0)
         
+        # Aplicar atrasos de entrega à encomenda efetuada hoje (que chegaria no dia + 1)
+        delay_dis = [d for d in day_disruptions if d["type"] == "delay"]
+        if delay_dis:
+            delay_days = int(delay_dis[0]["value"])
+            for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+                if (day + 1) in env.in_transit:
+                    qty = env.in_transit.pop(day + 1)
+                    target_day = day + 1 + delay_days
+                    env.in_transit[target_day] = env.in_transit.get(target_day, 0.0) + qty
+                    
+        # Restauro de atributos temporários modificados
+        for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
+            env.max_shelf_life = orig_max_shelf_life[env]
+            env.data.at[day, 'real_value'] = orig_real_demands[env]
+            
         state = next_state
         dias_simulados += 1
         
