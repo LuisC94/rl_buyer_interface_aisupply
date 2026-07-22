@@ -288,11 +288,11 @@ if 'last_uploaded_file_name' not in st.session_state:
     st.session_state.last_uploaded_file_name = None
 
 # ----------------- TABS PRINCIPAIS -----------------
-tab_forecast_train, tab_buyer_train, tab_sim, tab_compare = st.tabs([
+tab_forecast_train, tab_compare, tab_buyer_train, tab_sim = st.tabs([
     T("📈 1. Treinar Previsões", "📈 1. Train Forecasting"),
-    T("🏋️ 2. Treinar Buyer Agent", "🏋️ 2. Train Buyer Agent"),
-    T("🧪 3. Simulação & Inferência", "🧪 3. Simulation & Inference"),
-    T("📊 4. Comparar Modelos", "📊 4. Compare Models")
+    T("📊 2. Comparar Modelos", "📊 2. Compare Models"),
+    T("🏋️ 3. Treinar Buyer Agent", "🏋️ 3. Train Buyer Agent"),
+    T("🧪 4. Simulação & Inferência", "🧪 4. Simulation & Inference")
 ])
 
 # Helpers para check de existência dos modelos
