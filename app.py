@@ -45,7 +45,18 @@ st.set_page_config(
 # --- CORPORATE BRANDING LOGO ---
 logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "retail-logo.svg")
 if os.path.exists(logo_path):
-    st.sidebar.image(logo_path, width=180)
+    try:
+        import base64
+        with open(logo_path, "rb") as f:
+            logo_b64 = base64.b64encode(f.read()).decode("utf-8")
+        st.sidebar.markdown(
+            f'<div style="text-align: center; margin-bottom: 20px; padding-top: 10px;">'
+            f'<img src="data:image/svg+xml;base64,{logo_b64}" width="220" style="max-width: 100%;">'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    except Exception:
+        st.sidebar.image(logo_path, width=220)
 else:
     st.sidebar.warning(f"retail-logo.svg não encontrado em: {logo_path}")
 
