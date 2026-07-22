@@ -232,11 +232,6 @@ with st.sidebar:
         st.warning(T("Aceleração GPU (CUDA) indisponível. Usando CPU.", "GPU acceleration (CUDA) unavailable. Using CPU."))
         
     st.markdown("---")
-    st.markdown(f"### 📥 {T('Ficheiro de Exemplo', 'Example Template')}")
-    
-    st.markdown(T("**Estrutura de Colunas:**", "**Column Structure:**"))
-    st.code("date | sales_quantity_kg | price_per_kg | Validade/Prazo\n2015-03-01 | 150 | 2.50 | 15\n2015-03-02 | 120 | 2.45 | 15")
-    
     template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datasets", "exemplo_treino_previsoes.xlsx")
     if os.path.exists(template_path):
         try:
