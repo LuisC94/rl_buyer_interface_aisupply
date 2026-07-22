@@ -9,6 +9,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import torch
 import joblib
+from plotly.subplots import make_subplots
 
 # Adicionar o diretório atual ao path para garantir importações
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -306,7 +307,7 @@ def get_buyer_status(lote):
     return actor_exists
 
 def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, stock_levels):
-    fig = go.Figure()
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
     
     # 1. Bar: Orders (Encomendas)
     fig.add_trace(go.Bar(
@@ -317,7 +318,7 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
             line=dict(color='#8b5cf6', width=1.5)
         ),
         hovertemplate='%{y:.0f} un'
-    ))
+    ), secondary_y=False)
     
     # 2. Line: Sales (Vendas)
     fig.add_trace(go.Scatter(
@@ -325,9 +326,17 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
         name=T('Vendas Efetuadas', 'Sales Made'),
         line=dict(color='#10b981', width=2.5, shape='spline'),
         hovertemplate='%{y:.0f} un'
-    ))
+    ), secondary_y=False)
     
-    # 3. Markers: Spoilage (Expirados)
+    # 3. Line: Stock Level (Nível de Stock) on Secondary Y-Axis
+    fig.add_trace(go.Scatter(
+        x=plot_days, y=stock_levels, mode='lines',
+        name=T('Nível de Stock', 'Stock Level'),
+        line=dict(color='#0284c7', width=2.0, dash='dot', shape='spline'),
+        hovertemplate='%{y:.0f} un'
+    ), secondary_y=True)
+    
+    # 4. Markers: Spoilage (Expirados)
     spoil_x = []
     spoil_y = []
     for i, val in enumerate(spoilage):
@@ -341,9 +350,9 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
             name=T('Expirados (Lixo)', 'Expired (Waste)'),
             marker=dict(symbol='square', size=9, color='#ef4444', line=dict(width=1.5, color='#ffffff')),
             hovertemplate=T('Dia %{x}: Produto Expirado!', 'Day %{x}: Product Expired!')
-        ))
+        ), secondary_y=False)
         
-    # 4. Markers: Stockout / Missed Sales
+    # 5. Markers: Stockout / Missed Sales
     stockout_x = []
     stockout_y = []
     for i, val in enumerate(missed_sales):
@@ -357,7 +366,7 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
             name=T('Stockout / Stock Zero', 'Stockout / Zero Stock'),
             marker=dict(symbol='triangle-up', size=10, color='#eab308', line=dict(width=1.5, color='#ffffff')),
             hovertemplate=T('Dia %{x}: Rotura de Stock!', 'Day %{x}: Out of Stock!')
-        ))
+        ), secondary_y=False)
         
     fig.update_layout(
         title=dict(
@@ -365,7 +374,6 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
             font=dict(size=16, weight='bold')
         ),
         xaxis=dict(title=T("Dias", "Days"), showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1'),
-        yaxis=dict(title=T("Quantidade (un)", "Quantity (units)"), showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1'),
         hovermode="x unified",
         paper_bgcolor="#ffffff",
         plot_bgcolor="#f8fafc",
@@ -376,6 +384,10 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
         ),
         margin=dict(t=60, b=45, l=50, r=20)
     )
+    
+    fig.update_yaxes(title_text=T("Quantidade (un)", "Quantity (units)"), secondary_y=False, showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1')
+    fig.update_yaxes(title_text=T("Nível de Stock (un)", "Stock Level (units)"), secondary_y=True, showgrid=False, linecolor='#cbd5e1')
+    
     return fig
 
 # =====================================================================
