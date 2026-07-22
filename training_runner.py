@@ -636,6 +636,16 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
                 val = float(dis_val)
                 for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
                     env.data.at[day, 'real_value'] = val
+                    current_stock = sum(b['quantity'] for b in env.active_batches if b['quantity'] > 0)
+                    if current_stock < val:
+                        needed = val - current_stock
+                        env.active_batches.append({
+                            'quantity': float(needed),
+                            'age': 0.0,
+                            'quality': 100.0,
+                            'max_shelf_life': env.max_shelf_life
+                        })
+                        env._update_stock_profile_from_batches()
                     
             # 5. REDUÇÃO DE CAPACIDADE DO ARMAZÉM (Persistente)
             elif dis_type == "capacity_drop":
@@ -778,7 +788,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         next_state, reward, done_env, info = env_test.step(physical_action)
         done = done_env
         
-        log_msg = f"[Dia {day:03d}] Encomendas -> Agente: {info['order_placed']:03d} | MinMax: {info_minmax['order_placed']:03d} | TimeSupply: {action_timesupply:03d} | FloatingPoint: {action_floatingpoint:03d} || Lucro Agente: {info['profit']:.1f}€ | MinMax: {info_minmax['profit']:.1f}€"
+        log_msg = f"[Dia {day+1:03d}] Encomendas -> Agente: {info['order_placed']:03d} | MinMax: {info_minmax['order_placed']:03d} | TimeSupply: {action_timesupply:03d} | FloatingPoint: {action_floatingpoint:03d} || Lucro Agente: {info['profit']:.1f}€ | MinMax: {info_minmax['profit']:.1f}€"
         
         # Store experience
         current_15d_buffer.append({
@@ -804,7 +814,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         lost_sales = max(0, real_demand - sales)
         overcapacity_waste = max(0, info['overflow_waste'] - spoilage)
         
-        log_dias.append(day)
+        log_dias.append(day + 1)
         log_procura_real.append(real_demand)
         log_preco_venda.append(info['price_today'])
         log_acoes_agente.append(info['order_placed'])
@@ -859,7 +869,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         # Yield daily stats to display in UI dynamically
         yield {
             "status": "running",
-            "day": day,
+            "day": day + 1,
             "msg": log_msg,
             "agent_profit_cum": cum_profit_agent,
             "minmax_profit_cum": cum_profit_minmax,
