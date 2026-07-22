@@ -286,11 +286,14 @@ def get_buyer_status(lote):
 def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, stock_levels):
     fig = go.Figure()
     
-    # 1. Line: Orders (Encomendas)
-    fig.add_trace(go.Scatter(
-        x=plot_days, y=orders, mode='lines',
+    # 1. Bar: Orders (Encomendas)
+    fig.add_trace(go.Bar(
+        x=plot_days, y=orders,
         name=T('Encomendas PPO (Ord)', 'PPO Orders (Ord)'),
-        line=dict(color='#8b5cf6', width=2.5, shape='spline'),
+        marker=dict(
+            color='rgba(139, 92, 246, 0.35)',
+            line=dict(color='#8b5cf6', width=1.5)
+        ),
         hovertemplate='%{y:.0f} un'
     ))
     
