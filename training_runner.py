@@ -636,16 +636,6 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
                 val = float(dis_val)
                 for env in [env_test, env_minmax, env_timesupply, env_floatingpoint]:
                     env.data.at[day, 'real_value'] = val
-                    current_stock = sum(b['quantity'] for b in env.active_batches if b['quantity'] > 0)
-                    if current_stock < val:
-                        needed = val - current_stock
-                        env.active_batches.append({
-                            'quantity': float(needed),
-                            'age': 0.0,
-                            'quality': 100.0,
-                            'max_shelf_life': env.max_shelf_life
-                        })
-                        env._update_stock_profile_from_batches()
                     
             # 5. REDUÇÃO DE CAPACIDADE DO ARMAZÉM (Persistente)
             elif dis_type == "capacity_drop":
@@ -982,7 +972,8 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         "log_vendas_agente": log_vendas_agente,
         "log_vendas_perdidas_agente": log_vendas_perdidas_agente,
         "log_apodrecimento_agente": log_apodrecimento_agente,
-        "log_stock_final_agente": log_stock_final_agente
+        "log_stock_final_agente": log_stock_final_agente,
+        "log_procura_real": log_procura_real
     }
 
 

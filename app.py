@@ -306,16 +306,16 @@ def get_buyer_status(lote):
     actor_exists = os.path.exists(os.path.join(MODELS_DIR, f"buyer_agent_{lote}_actor.pth"))
     return actor_exists
 
-def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, stock_levels):
+def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, stock_levels, real_demand):
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # 1. Bar: Orders (Encomendas)
+    # 1. Bar: Orders (Encomendas) - Orange
     fig.add_trace(go.Bar(
         x=plot_days, y=orders,
         name=T('Encomendas PPO (Ord)', 'PPO Orders (Ord)'),
         marker=dict(
-            color='rgba(139, 92, 246, 0.35)',
-            line=dict(color='#8b5cf6', width=1.5)
+            color='rgba(249, 115, 22, 0.35)',
+            line=dict(color='#f97316', width=1.5)
         ),
         hovertemplate='%{y:.0f} un'
     ), secondary_y=False)
@@ -328,7 +328,15 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
         hovertemplate='%{y:.0f} un'
     ), secondary_y=False)
     
-    # 3. Line: Stock Level (Nível de Stock) on Secondary Y-Axis
+    # 3. Line: Real Demand (Procura Real)
+    fig.add_trace(go.Scatter(
+        x=plot_days, y=real_demand, mode='lines',
+        name=T('Procura Real', 'Real Demand'),
+        line=dict(color='#94a3b8', width=1.5, dash='dash', shape='spline'),
+        hovertemplate='%{y:.0f} un'
+    ), secondary_y=False)
+    
+    # 4. Line: Stock Level (Nível de Stock) on Secondary Y-Axis
     fig.add_trace(go.Scatter(
         x=plot_days, y=stock_levels, mode='lines',
         name=T('Nível de Stock', 'Stock Level'),
@@ -1203,7 +1211,8 @@ with tab_sim:
                                         plot_data["Agent Sales"],
                                         plot_data["Spoilage"],
                                         plot_data["Missed Sales"],
-                                        plot_data["Stock Level"]
+                                        plot_data["Stock Level"],
+                                        plot_data["Real Demand"]
                                     )
                                     chart_placeholder_diagnostics.plotly_chart(fig_diag, use_container_width=True)
                                     
@@ -1382,7 +1391,8 @@ with tab_sim:
                     res.get("log_vendas_agente", []),
                     res.get("log_apodrecimento_agente", []),
                     res.get("log_vendas_perdidas_agente", []),
-                    res.get("log_stock_final_agente", [])
+                    res.get("log_stock_final_agente", []),
+                    res.get("log_procura_real", [])
                 )
                 st.plotly_chart(fig_diag_final, use_container_width=True)
                 
