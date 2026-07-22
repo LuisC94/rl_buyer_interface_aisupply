@@ -762,7 +762,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
             'Stock_Final_Agente': log_stock_final_agente,
             'Vendas_Agente': log_vendas_agente,
             'Vendas_Perdidas_Agente': log_vendas_perdidas_agente,
-            'Apodrecimento_Agente': log_apodrecimento_agente,
+            'Desperdicio_Validade_Agente': log_apodrecimento_agente,
             'Excesso_Armazem_Agente': log_excesso_agente,
             'Lucro_Diario_Agente': log_lucro_diario_agente,
             'Lucro_Acumulado_Agente': log_lucro_acumulado_agente,
@@ -773,7 +773,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
             'Stock_Final_MinMax': log_stock_final_minmax,
             'Vendas_MinMax': log_vendas_minmax,
             'Vendas_Perdidas_MinMax': log_vendas_perdidas_minmax,
-            'Apodrecimento_MinMax': log_apodrecimento_minmax,
+            'Desperdicio_Validade_MinMax': log_apodrecimento_minmax,
             'Excesso_Armazem_MinMax': log_excesso_minmax,
             'Lucro_Diario_MinMax': log_lucro_diario_minmax,
             'Lucro_Acumulado_MinMax': log_lucro_acumulado_minmax,
@@ -784,7 +784,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
             'Stock_Final_Oracle': log_stock_final_oracle,
             'Vendas_Oracle': log_vendas_oracle,
             'Vendas_Perdidas_Oracle': log_vendas_perdidas_oracle,
-            'Apodrecimento_Oracle': log_apodrecimento_oracle,
+            'Desperdicio_Validade_Oracle': log_apodrecimento_oracle,
             'Excesso_Armazem_Oracle': log_excesso_oracle,
             'Lucro_Diario_Oracle': log_lucro_diario_oracle,
             'Lucro_Acumulado_Oraculo': log_lucro_acumulado_oracle,
@@ -792,7 +792,7 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
             'Flag_Stockout': flag_stockout,
             'Flag_Clientes_Perdidos': flag_clientes_perdidos,
             'Flag_Excesso_Armazem': flag_excesso_armazem,
-            'Flag_Apodrecimento': flag_apodrecimento
+            'Flag_Expirado': flag_apodrecimento
         })
         df_excel.to_excel(excel_report_path, index=False)
     except Exception as e:

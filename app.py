@@ -1005,7 +1005,7 @@ with tab_sim:
             st.markdown("---")
             st.markdown(f"### 📊 {T('Scorecard de Resultados', 'Results Scorecard')}")
             
-            c1, c2, c3, c4, c5 = st.columns(5)
+            c1, c2, c3, c4 = st.columns(4)
             with c1:
                 st.markdown(
                     f'<div class="metric-card">'
@@ -1023,18 +1023,11 @@ with tab_sim:
             with c3:
                 st.markdown(
                     f'<div class="metric-card">'
-                    f'<div class="metric-label">{T("Apodrecimento", "Spoilage")}</div>'
-                    f'<div class="metric-val" style="color: #ef4444;">{res["spoilage_total"]:.0f} un</div>'
-                    f'</div>', unsafe_allow_html=True
-                )
-            with c4:
-                st.markdown(
-                    f'<div class="metric-card">'
                     f'<div class="metric-label">{T("Vendas Perdidas", "Lost Sales")}</div>'
                     f'<div class="metric-val" style="color: #eab308;">{res["lost_sales_total"]:.0f} un</div>'
                     f'</div>', unsafe_allow_html=True
                 )
-            with c5:
+            with c4:
                 st.markdown(
                     f'<div class="metric-card">'
                     f'<div class="metric-label">{T("Dias Stock Zero", "Zero Stock Days")}</div>'
