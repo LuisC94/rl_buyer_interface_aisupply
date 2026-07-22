@@ -42,6 +42,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- CORPORATE BRANDING LOGO ---
+logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "retail-logo.svg")
+if os.path.exists(logo_path):
+    st.sidebar.image(logo_path, width=180)
+else:
+    st.sidebar.warning(f"retail-logo.svg não encontrado em: {logo_path}")
+
 # --- IDIOMA / LANGUAGE SELECTOR ---
 lang = st.sidebar.selectbox("🌐 Language / Idioma", ["English", "Português"], index=0)
 
@@ -222,13 +229,6 @@ with col_desc:
 
 # ----------------- SIDEBAR: GLOBAL CONFIGS & LOT SELECTOR -----------------
 with st.sidebar:
-    # Mostrar Logotipo da Empresa (Retail Consult)
-    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "retail-logo.svg")
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=180)
-    else:
-        st.sidebar.warning(f"retail-logo.svg não encontrado em: {logo_path}")
-
     lote_id = "uploaded_dataset"
     lote_label = T("Dataset Carregado", "Uploaded Dataset")
     
