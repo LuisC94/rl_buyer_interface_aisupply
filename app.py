@@ -212,6 +212,68 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
+    
+    /* Spoilage & Sustainability Cards */
+    .spoil-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 18px 20px;
+        text-align: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .spoil-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+    }
+    .spoil-card-minmax {
+        background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+        border: 1.5px solid #f87171;
+    }
+    .spoil-card-ppo {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 1.5px solid #22c55e;
+    }
+    .spoil-card-avoided {
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        border: 1.5px solid #3b82f6;
+    }
+    .spoil-card-saving {
+        background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+        border: 1.5px solid #f97316;
+    }
+    .spoil-badge {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+        align-self: center;
+    }
+    .spoil-badge-red { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .spoil-badge-green { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .spoil-badge-blue { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+    .spoil-badge-orange { background: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
+    .spoil-val {
+        font-size: 2.1rem;
+        font-weight: 800;
+        line-height: 1.1;
+        margin: 4px 0 2px 0;
+    }
+    .spoil-sub {
+        font-size: 0.83rem;
+        color: #64748b;
+        font-weight: 500;
+        margin-top: 4px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -396,6 +458,107 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
     fig.update_yaxes(title_text=T("Quantidade (un)", "Quantity (units)"), secondary_y=False, showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1')
     fig.update_yaxes(title_text=T("Nível de Stock (un)", "Stock Level (units)"), secondary_y=True, showgrid=False, linecolor='#cbd5e1')
     
+    return fig
+
+def create_spoilage_evolution_chart(plot_days, spoil_agent_daily, spoil_minmax_daily):
+    cum_agent = list(np.cumsum(spoil_agent_daily)) if len(spoil_agent_daily) > 0 else []
+    cum_minmax = list(np.cumsum(spoil_minmax_daily)) if len(spoil_minmax_daily) > 0 else []
+    
+    fig = go.Figure()
+    
+    # Min-Max Baseline Spoilage Line
+    fig.add_trace(go.Scatter(
+        x=plot_days, y=cum_minmax,
+        mode='lines',
+        name=f"{T('Min-Max Baseline', 'Min-Max Baseline')} ({cum_minmax[-1] if len(cum_minmax) > 0 else 0:.0f} un)",
+        line=dict(color='#ef4444', width=2.5, dash='dash', shape='spline'),
+        hovertemplate='%{y:,.0f} un'
+    ))
+    
+    # PPO Agent Spoilage Line
+    fig.add_trace(go.Scatter(
+        x=plot_days, y=cum_agent,
+        mode='lines',
+        name=f"{T('Agente PPO', 'PPO Agent')} ({cum_agent[-1] if len(cum_agent) > 0 else 0:.0f} un)",
+        line=dict(color='#10b981', width=3.0, shape='spline'),
+        fill='tozeroy',
+        fillcolor='rgba(16, 185, 129, 0.08)',
+        hovertemplate='%{y:,.0f} un'
+    ))
+    
+    fig.update_layout(
+        title=dict(
+            text=T("Evolução do Desperdício Acumulado (Spoilage): PPO vs Min-Max", "Cumulative Spoilage Evolution: PPO vs Min-Max"),
+            font=dict(size=15, weight='bold')
+        ),
+        xaxis=dict(title=T("Dias", "Days"), showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1'),
+        yaxis=dict(title=T("Desperdício Acumulado (un)", "Cumulative Spoilage (units)"), showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1'),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#f8fafc",
+        hovermode="x unified",
+        font=dict(family='"Segoe UI", "Roboto", sans-serif', color="#1e293b"),
+        legend=dict(
+            orientation="h", y=1.12, x=0.5, xanchor="center",
+            bgcolor="rgba(255, 255, 255, 0.8)", bordercolor="#cbd5e1", borderwidth=1
+        ),
+        margin=dict(t=60, b=45, l=50, r=20)
+    )
+    return fig
+
+def create_spoilage_breakdown_bars(spoil_agent, spoil_minmax, spoil_pct_agent, spoil_pct_minmax):
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=(
+            T("Taxa de Spoilage (%)", "Spoilage Rate (%)"),
+            T("Volume Total Desperdiçado (un)", "Total Spoilage Volume (un)")
+        )
+    )
+    
+    models = [T("Min-Max", "Min-Max"), T("Agente PPO", "PPO Agent")]
+    rates = [spoil_pct_minmax, spoil_pct_agent]
+    volumes = [spoil_minmax, spoil_agent]
+    colors = ['#ef4444', '#10b981']
+    
+    # Subplot 1: Spoilage Rate (%)
+    fig.add_trace(go.Bar(
+        x=models,
+        y=rates,
+        text=[f"{r:.1f}%" for r in rates],
+        textposition='outside',
+        marker=dict(color=colors, line=dict(color=['#b91c1c', '#047857'], width=1.5)),
+        name=T("Taxa (%)", "Rate (%)"),
+        showlegend=False,
+        hovertemplate='%{x}: %{y:.2f}%'
+    ), row=1, col=1)
+    
+    # Subplot 2: Total Units
+    fig.add_trace(go.Bar(
+        x=models,
+        y=volumes,
+        text=[f"{v:,.0f} un" for v in volumes],
+        textposition='outside',
+        marker=dict(color=colors, line=dict(color=['#b91c1c', '#047857'], width=1.5)),
+        name=T("Volume (un)", "Volume (units)"),
+        showlegend=False,
+        hovertemplate='%{x}: %{y:,.0f} un'
+    ), row=1, col=2)
+    
+    max_rate = max(rates) if rates else 10.0
+    fig.update_yaxes(range=[0, max_rate * 1.35 if max_rate > 0 else 5.0], title_text="%", row=1, col=1, showgrid=True, gridcolor='#e2e8f0')
+    
+    max_vol = max(volumes) if volumes else 100.0
+    fig.update_yaxes(range=[0, max_vol * 1.35 if max_vol > 0 else 50.0], title_text=T("Unidades (un)", "Units (un)"), row=1, col=2, showgrid=True, gridcolor='#e2e8f0')
+    
+    fig.update_layout(
+        title=dict(
+            text=T("Comparação de Desperdício: Baseline Min-Max vs Agente PPO", "Waste Comparison: Min-Max Baseline vs PPO Agent"),
+            font=dict(size=15, weight='bold')
+        ),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#f8fafc",
+        font=dict(family='"Segoe UI", "Roboto", sans-serif', color="#1e293b"),
+        margin=dict(t=65, b=40, l=50, r=20)
+    )
     return fig
 
 # =====================================================================
@@ -1332,6 +1495,122 @@ with tab_sim:
                 st.warning(T(f"📉 O Agente PPO obteve um lucro inferior ao baseline Min-Max tradicional em **{abs(profit_diff):.2f}€** ({pct_improvement:.2f}%).",
                              f"📉 The PPO Agent underperformed the traditional Min-Max baseline by **{abs(profit_diff):.2f}€** ({pct_improvement:.2f}%)."))
                 
+            # --- CÁLCULO DE MÉTRICAS DE SPOILAGE (PPO vs MIN-MAX) ---
+            spoil_agent = float(res.get("spoilage_total", sum(res.get("log_apodrecimento_agente", [0]))))
+            spoil_minmax = float(res.get("spoilage_total_minmax", sum(res.get("log_apodrecimento_minmax", [0]))))
+            
+            sold_agent = float(sum(res.get("log_vendas_agente", [0])))
+            sold_minmax = float(sum(res.get("log_vendas_minmax", [0])))
+            
+            handled_agent = sold_agent + spoil_agent
+            handled_minmax = sold_minmax + spoil_minmax
+            
+            if handled_agent <= 0:
+                handled_agent = float(sum(res.get("log_acoes_agente", [0])))
+            if handled_minmax <= 0:
+                handled_minmax = float(sum(res.get("log_acoes_minmax", [0])))
+            if handled_agent <= 0: handled_agent = 1.0
+            if handled_minmax <= 0: handled_minmax = 1.0
+            
+            spoil_pct_agent = (spoil_agent / handled_agent) * 100.0
+            spoil_pct_minmax = (spoil_minmax / handled_minmax) * 100.0
+            
+            spoil_avoided_qty = spoil_minmax - spoil_agent
+            if spoil_minmax > 0:
+                spoil_reduction_pct = (spoil_avoided_qty / spoil_minmax) * 100.0
+            else:
+                spoil_reduction_pct = 0.0 if spoil_agent == 0 else -100.0
+                
+            spoil_pp_diff = spoil_pct_minmax - spoil_pct_agent
+            
+            st.markdown("---")
+            st.markdown(f"### 🌿 {T('Benchmark de Sustentabilidade & Controlo de Desperdício (Spoilage)', 'Sustainability Benchmark & Spoilage Control')}")
+            
+            col_sp1, col_sp2, col_sp3, col_sp4 = st.columns(4)
+            with col_sp1:
+                st.markdown(
+                    f'<div class="spoil-card spoil-card-minmax">'
+                    f'<span class="spoil-badge spoil-badge-red">{T("Baseline Tradicional", "Traditional Baseline")}</span>'
+                    f'<div class="metric-label">{T("Spoilage Min-Max", "Min-Max Spoilage")}</div>'
+                    f'<div class="spoil-val" style="color: #dc2626;">{spoil_pct_minmax:.1f}%</div>'
+                    f'<div class="spoil-sub">{spoil_minmax:,.0f} un / kg {T("expiradas", "expired")}</div>'
+                    f'</div>', unsafe_allow_html=True
+                )
+            with col_sp2:
+                st.markdown(
+                    f'<div class="spoil-card spoil-card-ppo">'
+                    f'<span class="spoil-badge spoil-badge-green">{T("Inteligência Artificial", "Artificial Intelligence")}</span>'
+                    f'<div class="metric-label">{T("Spoilage Nosso PPO", "Our PPO Spoilage")}</div>'
+                    f'<div class="spoil-val" style="color: #16a34a;">{spoil_pct_agent:.1f}%</div>'
+                    f'<div class="spoil-sub">{spoil_agent:,.0f} un / kg {T("expiradas", "expired")}</div>'
+                    f'</div>', unsafe_allow_html=True
+                )
+            with col_sp3:
+                sign = "+" if spoil_reduction_pct > 0 else ""
+                color_avoided = "#2563eb" if spoil_reduction_pct >= 0 else "#ea580c"
+                st.markdown(
+                    f'<div class="spoil-card spoil-card-avoided">'
+                    f'<span class="spoil-badge spoil-badge-blue">{T("Eficiência Antidesperdício", "Anti-Waste Efficiency")}</span>'
+                    f'<div class="metric-label">{T("Desperdício Evitado", "Spoilage Avoided")}</div>'
+                    f'<div class="spoil-val" style="color: {color_avoided};">{sign}{spoil_reduction_pct:.1f}%</div>'
+                    f'<div class="spoil-sub">{abs(spoil_pp_diff):.1f} {T("p.p. de diferença", "p.p. difference")}</div>'
+                    f'</div>', unsafe_allow_html=True
+                )
+            with col_sp4:
+                st.markdown(
+                    f'<div class="spoil-card spoil-card-saving">'
+                    f'<span class="spoil-badge spoil-badge-orange">{T("Poupança Física", "Physical Savings")}</span>'
+                    f'<div class="metric-label">{T("Unidades Poupadas", "Units Saved")}</div>'
+                    f'<div class="spoil-val" style="color: #ea580c;">{max(0.0, spoil_avoided_qty):,.0f} un</div>'
+                    f'<div class="spoil-sub">{T("alimentos salvos do lixo", "food saved from waste")}</div>'
+                    f'</div>', unsafe_allow_html=True
+                )
+                
+            if spoil_avoided_qty > 0:
+                st.success(
+                    T(
+                        f"🌱 **Impacto Sustentável & Eficiência de Frescura:** O Agente PPO alcançou uma taxa de spoilage de **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) contra **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) do baseline Min-Max. "
+                        f"O nosso algoritmo **evitou o desperdício de {spoil_avoided_qty:,.0f} unidades/kg** (uma redução de **{spoil_reduction_pct:.1f}%** no desperdício total).",
+                        f"🌱 **Sustainable Impact & Freshness Efficiency:** The PPO Agent achieved a spoilage rate of **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) versus **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) from the Min-Max baseline. "
+                        f"Our algorithm **avoided the spoilage of {spoil_avoided_qty:,.0f} units/kg** (a **{spoil_reduction_pct:.1f}%** reduction in total waste)."
+                    )
+                )
+            elif spoil_avoided_qty == 0:
+                st.info(
+                    T(
+                        f"🌱 **Impacto de Sustentabilidade:** Ambos os modelos registaram **{spoil_agent:,.0f} unidades** de desperdício ({spoil_pct_agent:.1f}% taxa de spoilage).",
+                        f"🌱 **Sustainability Impact:** Both models recorded **{spoil_agent:,.0f} units** of spoilage ({spoil_pct_agent:.1f}% spoilage rate)."
+                    )
+                )
+            else:
+                st.warning(
+                    T(
+                        f"🌱 **Análise de Spoilage:** Taxa de Spoilage Agente PPO: **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) | Baseline Min-Max: **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un).",
+                        f"🌱 **Spoilage Analysis:** PPO Agent Spoilage Rate: **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) | Min-Max Baseline: **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un)."
+                    )
+                )
+                
+            # Gráficos de Spoilage
+            if "log_dias" in res:
+                col_sp_chart1, col_sp_chart2 = st.columns(2)
+                with col_sp_chart1:
+                    fig_spoil_evol = create_spoilage_evolution_chart(
+                        res["log_dias"],
+                        res.get("log_apodrecimento_agente", []),
+                        res.get("log_apodrecimento_minmax", [])
+                    )
+                    st.plotly_chart(fig_spoil_evol, use_container_width=True)
+                    
+                with col_sp_chart2:
+                    fig_spoil_bars = create_spoilage_breakdown_bars(
+                        spoil_agent,
+                        spoil_minmax,
+                        spoil_pct_agent,
+                        spoil_pct_minmax
+                    )
+                    st.plotly_chart(fig_spoil_bars, use_container_width=True)
+            
+            st.markdown("---")
             # Gráfico de evolução comparativa do lucro final
             if "log_dias" in res:
                 st.markdown(f"#### {T('Gráfico de Desempenho Comparativo', 'Comparative Performance Chart')}")

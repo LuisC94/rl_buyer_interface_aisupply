@@ -958,8 +958,11 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         "cum_profit_floatingpoint": cum_profit_floatingpoint,
         "stockout_days": sum(flag_stockout),
         "spoilage_total": sum(log_apodrecimento_agente),
+        "spoilage_total_minmax": sum(log_apodrecimento_minmax),
         "lost_sales_total": sum(log_vendas_perdidas_agente),
+        "lost_sales_total_minmax": sum(log_vendas_perdidas_minmax),
         "overflow_waste_total": sum(log_excesso_agente),
+        "overflow_waste_total_minmax": sum(log_excesso_minmax),
         "excel_report_path": excel_report_path,
         "final_model_path": final_model_path,
         "update_days": update_days,
@@ -969,10 +972,15 @@ def run_testing_simulation(excel_path, train_split, max_capacity, initial_model_
         "log_lucro_acumulado_timesupply": log_lucro_acumulado_timesupply,
         "log_lucro_acumulado_floatingpoint": log_lucro_acumulado_floatingpoint,
         "log_acoes_agente": log_acoes_agente,
+        "log_acoes_minmax": log_acoes_minmax,
         "log_vendas_agente": log_vendas_agente,
+        "log_vendas_minmax": log_vendas_minmax,
         "log_vendas_perdidas_agente": log_vendas_perdidas_agente,
+        "log_vendas_perdidas_minmax": log_vendas_perdidas_minmax,
         "log_apodrecimento_agente": log_apodrecimento_agente,
+        "log_apodrecimento_minmax": log_apodrecimento_minmax,
         "log_stock_final_agente": log_stock_final_agente,
+        "log_stock_final_minmax": log_stock_final_minmax,
         "log_procura_real": log_procura_real
     }
 
