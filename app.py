@@ -1526,7 +1526,7 @@ with tab_sim:
             st.markdown("---")
             st.markdown(f"### 🌿 {T('Benchmark de Sustentabilidade & Controlo de Desperdício (Spoilage)', 'Sustainability Benchmark & Spoilage Control')}")
             
-            col_sp1, col_sp2, col_sp3, col_sp4 = st.columns(4)
+            col_sp1, col_sp2, col_sp3 = st.columns(3)
             with col_sp1:
                 st.markdown(
                     f'<div class="spoil-card spoil-card-minmax">'
@@ -1546,23 +1546,26 @@ with tab_sim:
                     f'</div>', unsafe_allow_html=True
                 )
             with col_sp3:
-                sign = "+" if spoil_reduction_pct > 0 else ""
-                color_avoided = "#2563eb" if spoil_reduction_pct >= 0 else "#ea580c"
-                st.markdown(
-                    f'<div class="spoil-card spoil-card-avoided">'
-                    f'<span class="spoil-badge spoil-badge-blue">{T("Eficiência Antidesperdício", "Anti-Waste Efficiency")}</span>'
-                    f'<div class="metric-label">{T("Desperdício Evitado", "Spoilage Avoided")}</div>'
-                    f'<div class="spoil-val" style="color: {color_avoided};">{sign}{spoil_reduction_pct:.1f}%</div>'
-                    f'<div class="spoil-sub">{abs(spoil_pp_diff):.1f} {T("p.p. de diferença", "p.p. difference")}</div>'
-                    f'</div>', unsafe_allow_html=True
-                )
-            with col_sp4:
+                avoided_color = "#16a34a" if spoil_avoided_qty > 0 else ("#dc2626" if spoil_avoided_qty < 0 else "#64748b")
+                avoided_badge_cls = "spoil-badge-green" if spoil_avoided_qty > 0 else ("spoil-badge-red" if spoil_avoided_qty < 0 else "spoil-badge-blue")
+                badge_title = T("Poupança de Alimentos", "Food Savings") if spoil_avoided_qty >= 0 else T("Variação de Desperdício", "Waste Variation")
+                
+                if spoil_avoided_qty > 0:
+                    val_str = f"+{spoil_avoided_qty:,.0f} un"
+                    sub_str = f"{abs(spoil_pp_diff):.1f} {T('p.p. a menos de desperdício', 'p.p. less waste')}"
+                elif spoil_avoided_qty < 0:
+                    val_str = f"-{abs(spoil_avoided_qty):,.0f} un"
+                    sub_str = f"{abs(spoil_pp_diff):.1f} {T('p.p. a mais de desperdício', 'p.p. more waste')}"
+                else:
+                    val_str = "0 un"
+                    sub_str = T("Mesmo desperdício que Min-Max", "Same waste as Min-Max")
+                    
                 st.markdown(
                     f'<div class="spoil-card spoil-card-saving">'
-                    f'<span class="spoil-badge spoil-badge-orange">{T("Poupança Física", "Physical Savings")}</span>'
-                    f'<div class="metric-label">{T("Unidades Poupadas", "Units Saved")}</div>'
-                    f'<div class="spoil-val" style="color: #ea580c;">{max(0.0, spoil_avoided_qty):,.0f} un</div>'
-                    f'<div class="spoil-sub">{T("alimentos salvos do lixo", "food saved from waste")}</div>'
+                    f'<span class="spoil-badge {avoided_badge_cls}">{badge_title}</span>'
+                    f'<div class="metric-label">{T("Desperdício Evitado vs Min-Max", "Spoilage Avoided vs Min-Max")}</div>'
+                    f'<div class="spoil-val" style="color: {avoided_color};">{val_str}</div>'
+                    f'<div class="spoil-sub">{sub_str}</div>'
                     f'</div>', unsafe_allow_html=True
                 )
                 
@@ -1570,9 +1573,9 @@ with tab_sim:
                 st.success(
                     T(
                         f"🌱 **Impacto Sustentável & Eficiência de Frescura:** O Agente PPO alcançou uma taxa de spoilage de **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) contra **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) do baseline Min-Max. "
-                        f"O nosso algoritmo **evitou o desperdício de {spoil_avoided_qty:,.0f} unidades/kg** (uma redução de **{spoil_reduction_pct:.1f}%** no desperdício total).",
+                        f"O nosso algoritmo **evitou o desperdício de {spoil_avoided_qty:,.0f} unidades/kg** ({abs(spoil_pp_diff):.1f} pontos percentuais de melhoria).",
                         f"🌱 **Sustainable Impact & Freshness Efficiency:** The PPO Agent achieved a spoilage rate of **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) versus **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) from the Min-Max baseline. "
-                        f"Our algorithm **avoided the spoilage of {spoil_avoided_qty:,.0f} units/kg** (a **{spoil_reduction_pct:.1f}%** reduction in total waste)."
+                        f"Our algorithm **avoided the spoilage of {spoil_avoided_qty:,.0f} units/kg** ({abs(spoil_pp_diff):.1f} percentage points improvement)."
                     )
                 )
             elif spoil_avoided_qty == 0:
