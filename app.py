@@ -16,24 +16,46 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from training_runner import (
-        train_single_core_generator,
-        train_multi_core_generator,
+        train_dsac_generator,
         run_testing_simulation,
         train_mlp_forecaster_generator,
         train_autoformer_forecaster_generator,
         run_forecast_inference,
-        populate_prediction_column
+        populate_prediction_column,
+        lc_fruit_options,
+        CLIMATE_DEFAULTS,
+        DEFAULT_EPISODES,
+        LC_COLUMN_ALIASES,
+        OPTIONAL_LC_COLUMNS,
+        MODEL_FILE_SUFFIXES
     )
 except ImportError:
     from rl_buyer_interface.training_runner import (
-        train_single_core_generator,
-        train_multi_core_generator,
+        train_dsac_generator,
         run_testing_simulation,
         train_mlp_forecaster_generator,
         train_autoformer_forecaster_generator,
         run_forecast_inference,
-        populate_prediction_column
+        populate_prediction_column,
+        lc_fruit_options,
+        CLIMATE_DEFAULTS,
+        DEFAULT_EPISODES,
+        LC_COLUMN_ALIASES,
+        OPTIONAL_LC_COLUMNS,
+        MODEL_FILE_SUFFIXES
     )
+
+# Nome base do modelo DSAC Limitado guardado em models/ (ex: buyer_agent_dsac_uploaded_dataset_actor.pth)
+def buyer_model_name(lote):
+    return f"buyer_agent_dsac_{lote}"
+
+def with_lc_columns(df_raw, df_clean):
+    """ Acrescenta ao df limpo as colunas opcionais do Lifecycle (fruta e clima) se existirem no ficheiro """
+    df_raw = df_raw.rename(columns=LC_COLUMN_ALIASES)
+    for col in OPTIONAL_LC_COLUMNS:
+        if col in df_raw.columns and col not in df_clean.columns:
+            df_clean[col] = df_raw.loc[df_clean.index, col]
+    return df_clean
 
 # --- CONFIGURAÇÃO DA PÁGINA STREAMLIT ---
 st.set_page_config(
@@ -285,7 +307,7 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 def create_model_zip_bytes(model_base_path):
     """ Lê os arquivos gerados do modelo e empacota-os num buffer ZIP em memória """
     zip_buffer = io.BytesIO()
-    suffixes = ['_actor.pth', '_critic.pth', '_scaler.pth', '_econ_stat.pth']
+    suffixes = MODEL_FILE_SUFFIXES
     found_any = False
     
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
@@ -365,7 +387,7 @@ def get_forecaster_status(lote):
     return mlp_exists, auto_exists
 
 def get_buyer_status(lote):
-    actor_exists = os.path.exists(os.path.join(MODELS_DIR, f"buyer_agent_{lote}_actor.pth"))
+    actor_exists = os.path.exists(os.path.join(MODELS_DIR, f"{buyer_model_name(lote)}_actor.pth"))
     return actor_exists
 
 def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, stock_levels, real_demand):
@@ -374,7 +396,7 @@ def create_diagnostics_chart(plot_days, orders, sales, spoilage, missed_sales, s
     # 1. Bar: Orders (Encomendas) - Orange
     fig.add_trace(go.Bar(
         x=plot_days, y=orders,
-        name=T('Encomendas PPO (Ord)', 'PPO Orders (Ord)'),
+        name=T('Encomendas DSAC (Ord)', 'DSAC Orders (Ord)'),
         marker=dict(
             color='rgba(249, 115, 22, 0.35)',
             line=dict(color='#f97316', width=1.5)
@@ -475,11 +497,11 @@ def create_spoilage_evolution_chart(plot_days, spoil_agent_daily, spoil_minmax_d
         hovertemplate='%{y:,.0f} un'
     ))
     
-    # PPO Agent Spoilage Line
+    # DSAC Agent Spoilage Line
     fig.add_trace(go.Scatter(
         x=plot_days, y=cum_agent,
         mode='lines',
-        name=f"{T('Agente PPO', 'PPO Agent')} ({cum_agent[-1] if len(cum_agent) > 0 else 0:.0f} un)",
+        name=f"{T('Agente DSAC', 'DSAC Agent')} ({cum_agent[-1] if len(cum_agent) > 0 else 0:.0f} un)",
         line=dict(color='#10b981', width=3.0, shape='spline'),
         fill='tozeroy',
         fillcolor='rgba(16, 185, 129, 0.08)',
@@ -488,7 +510,7 @@ def create_spoilage_evolution_chart(plot_days, spoil_agent_daily, spoil_minmax_d
     
     fig.update_layout(
         title=dict(
-            text=T("Evolução do Desperdício Acumulado (Spoilage): PPO vs Min-Max", "Cumulative Spoilage Evolution: PPO vs Min-Max"),
+            text=T("Evolução do Desperdício Acumulado (Spoilage): DSAC vs Min-Max", "Cumulative Spoilage Evolution: DSAC vs Min-Max"),
             font=dict(size=15, weight='bold')
         ),
         xaxis=dict(title=T("Dias", "Days"), showgrid=True, gridcolor='#e2e8f0', linecolor='#cbd5e1'),
@@ -514,7 +536,7 @@ def create_spoilage_breakdown_bars(spoil_agent, spoil_minmax, spoil_pct_agent, s
         )
     )
     
-    models = [T("Min-Max", "Min-Max"), T("Agente PPO", "PPO Agent")]
+    models = [T("Min-Max", "Min-Max"), T("Agente DSAC", "DSAC Agent")]
     rates = [spoil_pct_minmax, spoil_pct_agent]
     volumes = [spoil_minmax, spoil_agent]
     colors = ['#ef4444', '#10b981']
@@ -551,7 +573,7 @@ def create_spoilage_breakdown_bars(spoil_agent, spoil_minmax, spoil_pct_agent, s
     
     fig.update_layout(
         title=dict(
-            text=T("Comparação de Desperdício: Baseline Min-Max vs Agente PPO", "Waste Comparison: Min-Max Baseline vs PPO Agent"),
+            text=T("Comparação de Desperdício: Baseline Min-Max vs Agente DSAC", "Waste Comparison: Min-Max Baseline vs DSAC Agent"),
             font=dict(size=15, weight='bold')
         ),
         paper_bgcolor="#ffffff",
@@ -582,8 +604,8 @@ with tab_forecast_train:
             T("Histórico de Vendas (Excel ou CSV):", "Sales History (Excel or CSV):"),
             type=["xlsx", "csv"],
             key="fc_file_uploader",
-            help=T("Colunas necessárias: date/Data, sales_quantity_kg/Vendas_Kg. Opcional: price_per_kg/Preco_Kg.",
-                   "Required columns: date/Data, sales_quantity_kg/Vendas_Kg. Optional: price_per_kg/Preco_Kg.")
+            help=T("Colunas necessárias: date/Data, sales_quantity_kg/Vendas_Kg. Opcional: price_per_kg/Preco_Kg, fruit_type/Fruta, temperature/Temperatura, humidity/Humidade, ethylene/Etileno.",
+                   "Required columns: date/Data, sales_quantity_kg/Vendas_Kg. Optional: price_per_kg/Preco_Kg, fruit_type, temperature, humidity, ethylene.")
         )
         
         # Detecção de alteração de arquivo para fazer reset completo e carregar cache
@@ -612,8 +634,8 @@ with tab_forecast_train:
                         keep_cols.append('validade')
                         df_temp['validade'] = pd.to_numeric(df_temp['validade'], errors='coerce')
                         
-                    df_temp = df_temp[keep_cols].dropna(subset=['date', 'sales_quantity_kg'])
-                    
+                    df_temp = with_lc_columns(df_temp, df_temp[keep_cols].dropna(subset=['date', 'sales_quantity_kg']))
+
                     st.session_state.forecast_df[lote_id] = df_temp
                     st.session_state.last_uploaded_file_name = uploaded_fc_file.name
                     st.session_state.trained_forecasters = set()
@@ -703,11 +725,11 @@ with tab_forecast_train:
                     history_df['date'] = pd.to_datetime(history_df['date']).dt.date
                     if 'price_per_kg' not in history_df.columns:
                         history_df['price_per_kg'] = 2.0
-                    history_df = history_df[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg'])
+                    history_df = with_lc_columns(history_df, history_df[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg']))
                     st.session_state.forecast_df[lote_id] = history_df
                 except:
                     pass
-                    
+
         if history_df is None:
             st.error(T("Não foi encontrado histórico em memória. Por favor, forneça o ficheiro excel no uploader do lado esquerdo.",
                        "No sales history found in memory. Please upload the excel file on the left side."))
@@ -751,7 +773,7 @@ with tab_forecast_train:
 # TAB 2: TREINO DO BUYER AGENT
 # =====================================================================
 with tab_buyer_train:
-    st.markdown(f"### {T('Treino do Buyer Agent (Reinforcement Learning - PPO)', 'Train Buyer Agent (Reinforcement Learning - PPO)')}")
+    st.markdown(f"### {T('Treino do Buyer Agent (Reinforcement Learning - DSAC Limitado + Lifecycle)', 'Train Buyer Agent (Reinforcement Learning - Constrained DSAC + Lifecycle)')}")
     mlp_trained = "mlp" in st.session_state.trained_forecasters
     auto_trained = "autoformer" in st.session_state.trained_forecasters
     
@@ -779,39 +801,55 @@ with tab_buyer_train:
             
             train_split = st.slider(T("Percentagem (%) de Dados para Treino:", "Percentage (%) of Data for Training:"), min_value=30, max_value=90, value=60, step=5, key="buyer_train_split")
             max_capacity = st.number_input(T("Capacidade Máxima do Armazém (unidades):", "Maximum Warehouse Capacity (units):"), min_value=100, max_value=5000, value=500, step=100, key="buyer_max_cap")
-            max_shelf_life = st.number_input(
-                T("Validade do Produto (Dias):", "Product Shelf Life (Days):"),
-                min_value=2,
-                max_value=120,
-                value=15,
-                step=1,
-                key="buyer_max_shelf_life"
-            )
             max_episodes = st.number_input(
-                T("Número Máximo de Simulações:", "Maximum Number of Training Simulations:  Min-64, Recommended-20000"),
-                min_value=64,
-                max_value=20000,
-                value=64, 
-                step=64, 
-                key="buyer_max_episodes"
+                T("Número de Episódios de Treino (DSAC):", "Number of Training Episodes (DSAC):  Min-10, Recommended-350"),
+                min_value=10,
+                max_value=2000,
+                value=DEFAULT_EPISODES,
+                step=10,
+                key="buyer_max_episodes",
+                help=T("Cada episódio percorre todos os dias de treino. O DSAC original usa 350 episódios.",
+                       "Each episode runs through all training days. The original DSAC uses 350 episodes.")
             )
             st.markdown('</div>', unsafe_allow_html=True)
-            
+
         with col_by2:
             st.markdown(f'<div class="custom-card">', unsafe_allow_html=True)
-            st.markdown(f"##### {T('2. Penalizações & Custos do Armazém', '2. Warehouse Penalties & Costs')}")
-            
+            st.markdown(f"##### {T('2. Lifecycle (LC v0.2.0) & Clima do Armazém', '2. Lifecycle (LC v0.2.0) & Warehouse Climate')}")
+
+            fruit_opts = lc_fruit_options()
+            fruit_keys = [k for k, _ in fruit_opts]
+            fruit_labels = {k: f"{lbl} ({k})" for k, lbl in fruit_opts}
+            df_loaded = st.session_state.forecast_df.get(lote_id)
+            has_fruit_col = df_loaded is not None and 'fruit_type' in df_loaded.columns
+
             col_b1, col_b2 = st.columns(2)
             with col_b1:
-                holding_cost = st.number_input(T("Custo Armazenamento (€/m³/dia):", "Storage Cost (€/m³/day):"), min_value=0.0, max_value=10.0, value=0.70, step=0.05, format="%.2f", key="by_hold")
-                transport_cost = st.number_input(T("Custo Transporte (€/m³):", "Transport Cost (€/m³):"), min_value=0.0, max_value=100.0, value=10.00, step=0.50, format="%.2f", key="by_trans")
-                fixed_transport_cost = st.number_input(T("Taxa Fixa Camião (€):", "Fixed Truck Fee (€):"), min_value=0.0, max_value=500.0, value=10.00, step=1.00, format="%.2f", key="by_fixed_trans")
+                fruit_key = st.selectbox(
+                    T("Fruta (preset Lifecycle):", "Fruit (Lifecycle preset):"),
+                    fruit_keys,
+                    index=fruit_keys.index("apple_gala") if "apple_gala" in fruit_keys else 0,
+                    format_func=lambda k: fruit_labels.get(k, k),
+                    key="by_fruit_key",
+                    help=T("Se o dataset tiver a coluna fruit_type, essa coluna tem prioridade.",
+                           "If the dataset has a fruit_type column, that column takes priority.")
+                )
+                temperature_val = st.number_input(T("Temperatura (°C):", "Temperature (°C):"), min_value=-5.0, max_value=45.0, value=CLIMATE_DEFAULTS["temperature"], step=0.5, format="%.1f", key="by_temperature")
                 product_volume_val = st.number_input(T("Volume do Produto (m³):", "Product Volume (m³):"), min_value=0.0001, max_value=10.0, value=0.002, step=0.0005, format="%.4f", key="by_prod_volume")
             with col_b2:
-                stockout_penalty_val = st.number_input(T("Penalização Vendas Perdidas (% preço):", "Lost Sales Penalty (% price):"), min_value=0.0, max_value=200.0, value=25.0, step=5.0, key="by_stockout_pct") / 100.0
-                waste_penalty_val = st.number_input(T("Penalização Desperdício (% preço):", "Waste Penalty (% price):"), min_value=0.0, max_value=500.0, value=100.0, step=10.0, key="by_waste_pct") / 100.0
-                zero_stock_penalty_val = st.number_input(T("Penalização Stockout / Stock Zero (% preço):", "Stockout / Zero Stock Penalty (% price):"), min_value=0.0, max_value=1000.0, value=500.0, step=50.0, key="by_zero_pct") / 100.0
-            
+                humidity_val = st.number_input(T("Humidade Relativa (%):", "Relative Humidity (%):"), min_value=0.0, max_value=100.0, value=CLIMATE_DEFAULTS["humidity"], step=1.0, format="%.1f", key="by_humidity")
+                ethylene_val = st.number_input(T("Etileno Externo (ppm):", "External Ethylene (ppm):"), min_value=0.0, max_value=10.0, value=CLIMATE_DEFAULTS["ethylene"], step=0.05, format="%.2f", key="by_ethylene",
+                                               help=T("Com etileno > 0 o Lifecycle usa o Modelo 1 (com etileno); com 0 usa o Modelo 2.",
+                                                      "With ethylene > 0 the Lifecycle uses Model 1 (with ethylene); with 0 it uses Model 2."))
+
+            if has_fruit_col:
+                st.caption(T("ℹ️ O dataset carregado tem coluna fruit_type: é essa a fruta usada no treino.",
+                             "ℹ️ The loaded dataset has a fruit_type column: that fruit is used for training."))
+            st.caption(T("ℹ️ Colunas temperature/humidity/ethylene no dataset têm prioridade sobre estes valores. "
+                         "Custos e penalizações são os do ambiente DSAC original (armazenagem 20€/m³/dia, frota carrinha/intermédio/TIR, markdown 40% em fim de vida, penalização de rutura e reputação).",
+                         "ℹ️ temperature/humidity/ethylene columns in the dataset take priority over these values. "
+                         "Costs and penalties are those of the original DSAC environment (storage 20€/m³/day, van/mid/TIR fleet, 40% end-of-life markdown, stockout and reputation penalties)."))
+
             core_mode = st.radio(T("Modo de Processamento:", "Processing Mode:"), [T("Single-Core (Estável em Cloud)", "Single-Core (Stable in Cloud)"), T("Multi-Core (Mais Rápido Localmente)", "Multi-Core (Faster Locally)")], index=0, key="by_core_mode")
             
             workers = 4
@@ -856,8 +894,8 @@ with tab_buyer_train:
                             keep_cols.append('validade')
                             df_buyer_train['validade'] = pd.to_numeric(df_buyer_train['validade'], errors='coerce')
                             
-                        df_buyer_train = df_buyer_train[keep_cols].dropna(subset=['date', 'sales_quantity_kg'])
-                        
+                        df_buyer_train = with_lc_columns(df_buyer_train, df_buyer_train[keep_cols].dropna(subset=['date', 'sales_quantity_kg']))
+
                         # Alimentar o uploader de previsões a partir do modelo pré-treinado
                         df_buyer_with_pred = populate_prediction_column(lote_id, forecast_type_id, df_buyer_train, MODELS_DIR)
                         
@@ -870,77 +908,34 @@ with tab_buyer_train:
                         df_env_format = df_buyer_with_pred.rename(columns=rename_dict)
                         if 'volume' not in df_env_format.columns:
                             df_env_format['volume'] = product_volume_val
-                        if 'validade' not in df_env_format.columns:
-                            df_env_format['validade'] = max_shelf_life
-                            
+
                         # Escrever arquivo temporário no disco
                         temp_buyer_excel_path = os.path.join(tempfile.gettempdir(), f"buyer_train_temp_{lote_id}.xlsx")
                         df_env_format.to_excel(temp_buyer_excel_path, index=False)
-                        
-                        # Configurar variáveis de treino
-                        lr_act = 0.0003
-                        lr_crit = 0.001
-                        gamma = 0.8
-                        eps_clip = 0.2
-                        k_epochs = 30
-                        batch_size = 2048
-                        max_episodes = int(st.session_state.get("buyer_max_episodes", 640))
+
+                        # Configurar variáveis de treino (hiperparâmetros DSAC fixos no training_runner)
+                        max_episodes = int(st.session_state.get("buyer_max_episodes", DEFAULT_EPISODES))
                         seed = 1337
-                        
-                        temp_model_dir = MODELS_DIR
-                        model_base_name = f"buyer_agent_{lote_id}"
-                        
-                        # Selecionar modo de cores/cores do CPU
-                        if "Single-Core" in core_mode:
-                            gen = train_single_core_generator(
-                                seed=seed,
-                                excel_path=temp_buyer_excel_path,
-                                train_split=(train_split / 100.0),
-                                max_capacity=max_capacity,
-                                lr_actor=lr_act,
-                                lr_critic=lr_crit,
-                                gamma=gamma,
-                                k_epochs=k_epochs,
-                                eps_clip=eps_clip,
-                                batch_size=batch_size,
-                                max_episodes_total=max_episodes,
-                                num_envs=64,
-                                save_dir=temp_model_dir,
-                                holding_cost=holding_cost,
-                                transport_cost=transport_cost,
-                                fixed_transport_cost=fixed_transport_cost,
-                                stockout_penalty=stockout_penalty_val,
-                                waste_penalty=waste_penalty_val,
-                                zero_stock_penalty=zero_stock_penalty_val,
-                                max_shelf_life=max_shelf_life
-                            )
-                        else:
-                            gen = train_multi_core_generator(
-                                seed=seed,
-                                excel_path=temp_buyer_excel_path,
-                                train_split=(train_split / 100.0),
-                                max_capacity=max_capacity,
-                                lr_actor=lr_act,
-                                lr_critic=lr_crit,
-                                gamma=gamma,
-                                k_epochs=k_epochs,
-                                eps_clip=eps_clip,
-                                batch_size=batch_size,
-                                max_episodes_total=max_episodes,
-                                num_envs=64,
-                                num_workers=workers,
-                                save_dir=temp_model_dir,
-                                holding_cost=holding_cost,
-                                transport_cost=transport_cost,
-                                fixed_transport_cost=fixed_transport_cost,
-                                stockout_penalty=stockout_penalty_val,
-                                waste_penalty=waste_penalty_val,
-                                zero_stock_penalty=zero_stock_penalty_val,
-                                max_shelf_life=max_shelf_life
-                            )
-                            
-                        # Renomear os ficheiros finais gerados para conter o lote_id específico
-                        # para podermos guardar múltiplos lotes ao mesmo tempo
+
+                        # Single-Core = 1 thread PyTorch; Multi-Core = N threads (o DSAC é off-policy e sequencial)
+                        num_threads = 1 if "Single-Core" in core_mode else workers
+
+                        gen = train_dsac_generator(
+                            seed=seed,
+                            excel_path=temp_buyer_excel_path,
+                            train_split=(train_split / 100.0),
+                            max_capacity=max_capacity,
+                            max_episodes_total=max_episodes,
+                            save_dir=MODELS_DIR,
+                            model_name=buyer_model_name(lote_id),
+                            fruit_key=fruit_key,
+                            temperature=temperature_val,
+                            humidity=humidity_val,
+                            ethylene=ethylene_val,
+                            device=device,
+                            num_threads=num_threads
+                        )
+
                         progress_bar = st.progress(0.0)
                         
                         for log_line in gen:
@@ -960,18 +955,7 @@ with tab_buyer_train:
                                     pass
                                     
                         progress_bar.progress(1.0)
-                        
-                        # Renomear checkpoints genéricos para o base name correto do lote
-                        generic_base = os.path.join(temp_model_dir, "ppo_constrained_final")
-                        target_base = os.path.join(temp_model_dir, model_base_name)
-                        
-                        suffixes = ['_actor.pth', '_critic.pth', '_scaler.pth', '_econ_stat.pth']
-                        for suffix in suffixes:
-                            if os.path.exists(generic_base + suffix):
-                                if os.path.exists(target_base + suffix):
-                                    os.remove(target_base + suffix)
-                                os.rename(generic_base + suffix, target_base + suffix)
-                                
+
                         st.session_state.trained_buyer = True
                         st.success(T("🎉 Buyer Agent treinado e salvo com sucesso!",
                                      "🎉 Buyer Agent trained and saved successfully!"))
@@ -996,7 +980,6 @@ with tab_sim:
         st.success(T("✅ Modelos prontos! Configura os parâmetros e inicia a simulação.", "✅ Models ready! Configure parameters and start the simulation."))
         
         # Recuperar parâmetros do Buyer Agent definidos no Treino (Aba 2)
-        max_shelf_life = st.session_state.get("buyer_max_shelf_life", 15)
         product_volume_val = st.session_state.get("by_prod_volume", 0.002)
         
         # Escolher qual o modelo preditivo a utilizar
@@ -1061,7 +1044,7 @@ with tab_sim:
                         keep_cols.append('validade')
                         df_test_data['validade'] = pd.to_numeric(df_test_data['validade'], errors='coerce')
                         
-                    df_test_data = df_test_data[keep_cols].dropna(subset=['date', 'sales_quantity_kg'])
+                    df_test_data = with_lc_columns(df_test_data, df_test_data[keep_cols].dropna(subset=['date', 'sales_quantity_kg']))
                     test_split_val = 0.0 # Usar todo o ficheiro novo
                     
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1120,7 +1103,9 @@ with tab_sim:
                 val_input = st.slider(T("Percentagem de Perda (%):", "Percentage Loss (%):"), min_value=0, max_value=100, value=50, step=5, key="disp_loss_val") / 100.0
                 disp_key = "in_transit_loss"
             elif "Qualidade Inferior" in disp_type or "Quality" in disp_type:
-                val_input = st.number_input(T("Nova Validade do Lote (Dias):", "New Batch Shelf Life (Days):"), min_value=1, max_value=60, value=3, step=1, key="disp_shelf_val")
+                val_input = st.number_input(T("Vida Útil Restante do Lote que chega (Dias):", "Remaining Shelf Life of Arriving Batch (Days):"), min_value=1, max_value=60, value=3, step=1, key="disp_shelf_val",
+                                            help=T("O lote que dá entrada neste dia chega já envelhecido (Lifecycle) até restarem estes dias de vida útil.",
+                                                   "The batch arriving on this day is pre-aged (Lifecycle) until only these days of shelf life remain."))
                 disp_key = "shelf_life_drop"
             elif "Forçar Procura Real" in disp_type or "Force Real Demand" in disp_type:
                 val_input = st.number_input(T("Nova Procura Real (Kg):", "New Real Demand (Kg):"), min_value=0.0, max_value=10000.0, value=150.0, step=10.0, key="disp_demand_val")
@@ -1133,21 +1118,15 @@ with tab_sim:
                     T("Custo a alterar:", "Cost to alter:"),
                     [
                         T("Custo Armazenamento (€/m³/dia)", "Storage Cost (€/m³/day)"),
-                        T("Custo Transporte (€/m³)", "Transport Cost (€/m³)"),
-                        T("Taxa Fixa Camião (€)", "Fixed Truck Fee (€)"),
-                        T("Penalização Vendas Perdidas (% preco)", "Lost Sales Penalty (% price)"),
-                        T("Penalização Desperdício (% preco)", "Waste Penalty (% price)"),
-                        T("Penalização Stock Zero (% preco)", "Zero Stock Penalty (% price)")
+                        T("Penalização Desperdício (% custo unitário)", "Waste Penalty (% unit cost)")
                     ],
-                    key="disp_cost_param"
+                    key="disp_cost_param",
+                    help=T("Custos do ambiente DSAC: armazenagem por defeito 20€/m³/dia; desperdício por defeito 100% do custo unitário na simulação.",
+                           "DSAC environment costs: default storage 20€/m³/day; default waste 100% of unit cost in the simulation.")
                 )
                 cost_map = {
                     T("Custo Armazenamento (€/m³/dia)", "Storage Cost (€/m³/day)"): "holding_cost",
-                    T("Custo Transporte (€/m³)", "Transport Cost (€/m³)"): "transport_cost",
-                    T("Taxa Fixa Camião (€)", "Fixed Truck Fee (€)"): "fixed_transport_cost",
-                    T("Penalização Vendas Perdidas (% preco)", "Lost Sales Penalty (% price)"): "stockout_penalty",
-                    T("Penalização Desperdício (% preco)", "Waste Penalty (% price)"): "waste_penalty",
-                    T("Penalização Stock Zero (% preco)", "Zero Stock Penalty (% price)"): "zero_stock_penalty"
+                    T("Penalização Desperdício (% custo unitário)", "Waste Penalty (% unit cost)"): "waste_penalty"
                 }
                 cost_param_selected = cost_map[cost_param]
                 
@@ -1222,7 +1201,7 @@ with tab_sim:
                         df_test_cleaned['date'] = pd.to_datetime(df_test_cleaned['date']).dt.date
                         if 'price_per_kg' not in df_test_cleaned.columns:
                             df_test_cleaned['price_per_kg'] = 2.0
-                        df_test_cleaned = df_test_cleaned[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg'])
+                        df_test_cleaned = with_lc_columns(df_test_cleaned, df_test_cleaned[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg']))
                         
                         # Populate
                         df_test_with_pred = populate_prediction_column(lote_id, forecast_type_id, df_test_cleaned, MODELS_DIR)
@@ -1235,14 +1214,12 @@ with tab_sim:
                         df_env_test_format = df_test_with_pred.rename(columns=rename_dict)
                         if 'volume' not in df_env_test_format.columns:
                             df_env_test_format['volume'] = product_volume_val
-                        if 'validade' not in df_env_test_format.columns:
-                            df_env_test_format['validade'] = max_shelf_life
-                            
+
                         # Gravar ficheiro temporário para simulação
                         temp_sim_excel_path = os.path.join(tempfile.gettempdir(), f"buyer_sim_temp_{lote_id}.xlsx")
                         df_env_test_format.to_excel(temp_sim_excel_path, index=False)
-                        
-                        initial_model_base_path = os.path.join(MODELS_DIR, f"buyer_agent_{lote_id}")
+
+                        initial_model_base_path = os.path.join(MODELS_DIR, buyer_model_name(lote_id))
                         
                         # Instanciar o gerador da simulação
                         sim_gen = run_testing_simulation(
@@ -1257,14 +1234,11 @@ with tab_sim:
                             online_lr_critic=5e-5,
                             online_batch_size=32,
                             save_dir=MODELS_DIR,
-                            holding_cost=st.session_state.get("by_hold", 0.70),
-                            transport_cost=st.session_state.get("by_trans", 10.00),
-                            fixed_transport_cost=st.session_state.get("by_fixed_trans", 10.00),
-                            stockout_penalty=st.session_state.get("by_stockout_pct", 25.0)/100.0,
-                            waste_penalty=st.session_state.get("by_waste_pct", 100.0)/100.0,
-                            zero_stock_penalty=st.session_state.get("by_zero_pct", 500.0)/100.0,
-                            max_shelf_life=max_shelf_life,
-                            disruptions=st.session_state.get("sim_disruptions", [])
+                            temperature=st.session_state.get("by_temperature"),
+                            humidity=st.session_state.get("by_humidity"),
+                            ethylene=st.session_state.get("by_ethylene"),
+                            disruptions=st.session_state.get("sim_disruptions", []),
+                            device=device
                         )
                         
                         plot_data = {
@@ -1489,13 +1463,13 @@ with tab_sim:
             
             st.markdown(f"#### {T('Resumo Executivo', 'Executive Summary')}")
             if profit_diff > 0:
-                st.success(T(f"📈 O Agente PPO superou o baseline Min-Max tradicional em **{profit_diff:.2f}€** (+{pct_improvement:.2f}%).",
-                             f"📈 The PPO Agent outperformed the traditional Min-Max baseline by **{profit_diff:.2f}€** (+{pct_improvement:.2f}%)."))
+                st.success(T(f"📈 O Agente DSAC superou o baseline Min-Max tradicional em **{profit_diff:.2f}€** (+{pct_improvement:.2f}%).",
+                             f"📈 The DSAC Agent outperformed the traditional Min-Max baseline by **{profit_diff:.2f}€** (+{pct_improvement:.2f}%)."))
             else:
-                st.warning(T(f"📉 O Agente PPO obteve um lucro inferior ao baseline Min-Max tradicional em **{abs(profit_diff):.2f}€** ({pct_improvement:.2f}%).",
-                             f"📉 The PPO Agent underperformed the traditional Min-Max baseline by **{abs(profit_diff):.2f}€** ({pct_improvement:.2f}%)."))
+                st.warning(T(f"📉 O Agente DSAC obteve um lucro inferior ao baseline Min-Max tradicional em **{abs(profit_diff):.2f}€** ({pct_improvement:.2f}%).",
+                             f"📉 The DSAC Agent underperformed the traditional Min-Max baseline by **{abs(profit_diff):.2f}€** ({pct_improvement:.2f}%)."))
                 
-            # --- CÁLCULO DE MÉTRICAS DE SPOILAGE (PPO vs MIN-MAX) ---
+            # --- CÁLCULO DE MÉTRICAS DE SPOILAGE (DSAC vs MIN-MAX) ---
             spoil_agent = float(res.get("spoilage_total", sum(res.get("log_apodrecimento_agente", [0]))))
             spoil_minmax = float(res.get("spoilage_total_minmax", sum(res.get("log_apodrecimento_minmax", [0]))))
             
@@ -1540,7 +1514,7 @@ with tab_sim:
                 st.markdown(
                     f'<div class="spoil-card spoil-card-ppo">'
                     f'<span class="spoil-badge spoil-badge-green">{T("Inteligência Artificial", "Artificial Intelligence")}</span>'
-                    f'<div class="metric-label">{T("Spoilage Nosso PPO", "Our PPO Spoilage")}</div>'
+                    f'<div class="metric-label">{T("Spoilage Nosso DSAC", "Our DSAC Spoilage")}</div>'
                     f'<div class="spoil-val" style="color: #16a34a;">{spoil_pct_agent:.1f}%</div>'
                     f'<div class="spoil-sub">{spoil_agent:,.0f} un / kg {T("expiradas", "expired")}</div>'
                     f'</div>', unsafe_allow_html=True
@@ -1572,9 +1546,9 @@ with tab_sim:
             if spoil_avoided_qty > 0:
                 st.success(
                     T(
-                        f"🌱 **Impacto Sustentável & Eficiência de Frescura:** O Agente PPO alcançou uma taxa de spoilage de **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) contra **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) do baseline Min-Max. "
+                        f"🌱 **Impacto Sustentável & Eficiência de Frescura:** O Agente DSAC alcançou uma taxa de spoilage de **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) contra **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) do baseline Min-Max. "
                         f"O nosso algoritmo **evitou o desperdício de {spoil_avoided_qty:,.0f} unidades/kg** ({abs(spoil_pp_diff):.1f} pontos percentuais de melhoria).",
-                        f"🌱 **Sustainable Impact & Freshness Efficiency:** The PPO Agent achieved a spoilage rate of **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) versus **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) from the Min-Max baseline. "
+                        f"🌱 **Sustainable Impact & Freshness Efficiency:** The DSAC Agent achieved a spoilage rate of **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) versus **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un) from the Min-Max baseline. "
                         f"Our algorithm **avoided the spoilage of {spoil_avoided_qty:,.0f} units/kg** ({abs(spoil_pp_diff):.1f} percentage points improvement)."
                     )
                 )
@@ -1588,8 +1562,8 @@ with tab_sim:
             else:
                 st.warning(
                     T(
-                        f"🌱 **Análise de Spoilage:** Taxa de Spoilage Agente PPO: **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) | Baseline Min-Max: **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un).",
-                        f"🌱 **Spoilage Analysis:** PPO Agent Spoilage Rate: **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) | Min-Max Baseline: **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un)."
+                        f"🌱 **Análise de Spoilage:** Taxa de Spoilage Agente DSAC: **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) | Baseline Min-Max: **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un).",
+                        f"🌱 **Spoilage Analysis:** DSAC Agent Spoilage Rate: **{spoil_pct_agent:.1f}%** ({spoil_agent:,.0f} un) | Min-Max Baseline: **{spoil_pct_minmax:.1f}%** ({spoil_minmax:,.0f} un)."
                     )
                 )
                 
@@ -1699,7 +1673,7 @@ with tab_sim:
                     st.download_button(
                         label=T("📥 Descarregar Modelo Otimizado / Fine-Tuned (.ZIP)", "📥 Download Optimized / Fine-Tuned Model (.ZIP)"),
                         data=zip_final_bytes,
-                        file_name="modelo_ppo_buyer_agent_fine_tuned.zip",
+                        file_name="modelo_dsac_limitado_buyer_agent_fine_tuned.zip",
                         mime="application/zip",
                         use_container_width=True
                     )
@@ -1761,7 +1735,7 @@ with tab_compare:
                         history_df['date'] = pd.to_datetime(history_df['date']).dt.date
                         if 'price_per_kg' not in history_df.columns:
                             history_df['price_per_kg'] = 2.0
-                        history_df = history_df[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg'])
+                        history_df = with_lc_columns(history_df, history_df[['date', 'sales_quantity_kg', 'price_per_kg']].dropna(subset=['date', 'sales_quantity_kg']))
                         st.session_state.forecast_df[lote_id] = history_df
                     except:
                         pass

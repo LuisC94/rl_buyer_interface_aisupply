@@ -1,0 +1,32 @@
+{
+  "algorithm": "DSAC_Limitado",
+  "state_dim": 30,
+  "fruit_key": "apple_gala",
+  "fruit_label": "Apple (Gala)",
+  "lifecycle_engine": "LC v0.2.0 (modelo 1)",
+  "lc_model": 1,
+  "owner_type": "Retailer",
+  "packaging": "bulk",
+  "climate_defaults": {
+    "temperature": 22.0,
+    "humidity": 70.0,
+    "ethylene": 0.8
+  },
+  "max_capacity": 500.0,
+  "max_order_limit": 205.0,
+  "risk_factor": 0.85,
+  "episodes": 20,
+  "train_split": 0.6,
+  "days_train": 91,
+  "days_eval": 61,
+  "best_eval_profit": 60353.28,
+  "best_eval_metrics": {
+    "profit": 60353.28,
+    "sales": 4594.0,
+    "missed_sales": 15.0,
+    "waste": 0.0
+  },
+  "train_data_file": "buyer_agent_dsac_uploaded_dataset_train_data.xlsx",
+  "training_time_seconds": 45.4,
+  "trained_at": "2026-11-14 15:40:01"
+}
